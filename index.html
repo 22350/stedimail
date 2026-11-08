@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; manifest-src 'self' blob:; script-src 'self' https://accounts.google.com/gsi/client https://apis.google.com; connect-src 'self' https://gmail.googleapis.com https://people.googleapis.com https://www.googleapis.com https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/ https://docs.google.com https://drive.google.com; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src * data: blob:; font-src * data:; media-src * blob:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; manifest-src 'self' blob:; script-src 'self' https://accounts.google.com/gsi/client https://apis.google.com; connect-src 'self' http://127.0.0.1:8093 https://gmail.googleapis.com https://people.googleapis.com https://www.googleapis.com https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/ https://docs.google.com https://drive.google.com; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src * data: blob:; font-src * data:; media-src * blob:">
 <title>StediMail</title>
 <meta name="theme-color" content="#373a2b">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=20261108083626">
+<link rel="stylesheet" href="style.css?v=20261108085545">
 <script src="https://accounts.google.com/gsi/client" async></script>
-<script src="app.js?v=20261108083626" defer></script>
+<script src="app.js?v=20261108085545" defer></script>
 </head>
 <body>
 <header class="bar">
@@ -75,6 +75,11 @@
       <span>Columns</span>
       <div id="set-columns" class="col-list"></div>
       <button type="button" id="set-add" class="add-col">+ Add column</button>
+    </div>
+    <div class="field">
+      <span>StediTask on this computer</span>
+      <label class="check"><input type="checkbox" id="set-steditask"> Give each column a project in the StediTask window</label>
+      <p class="hint">Renaming a column renames its project. Removing a column keeps the project and its tasks. Projects made in StediTask only become columns if you say yes there.</p>
     </div>
     <div class="field">
       <span>Rules</span>

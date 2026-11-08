@@ -2498,6 +2498,7 @@ function saveColumnList(list, reloadAfter = 0) {
   assign(columns());
   render();
   setTimeout(loadBoard, reloadAfter);
+  linkStediTask();
 }
 
 async function removeColumn(i, afterDelete = false) {
@@ -4245,6 +4246,7 @@ function openSettings() {
     ...settings.columns.map((n) => columnRow(n, n)),
   );
   $('#set-client').value = settings.clientId;
+  $('#set-steditask').checked = store.get('stediTaskLink', false);
   $('#set-error').textContent = '';
   $('#settings').showModal();
 }
@@ -4303,6 +4305,7 @@ async function applySettings({ inboxName, cols, clientId }) {
     try {
       await renameLabel(c.orig, c.name);
       renameTaskColumn(c.orig, c.name);
+      store.set('stediTaskRenames', [...store.get('stediTaskRenames', []), { from: c.orig, to: c.name }]);
     } catch (e) {
       if (!(e instanceof AuthError)) toast(`Could not rename “${c.orig}”: ${e.message}`);
       c.name = c.orig;
@@ -4320,6 +4323,42 @@ async function applySettings({ inboxName, cols, clientId }) {
   assign(columns());
   render();
   loadBoard();
+  linkStediTask();
+}
+
+// ---------- the StediTask window on this computer (Paul, 2026-11-08) ----------
+// Turned on in Settings, for this account. Each column (not the Inbox) gets a project in StediTask, matched
+// by name; renames follow. A project made in StediTask that Paul said yes to comes back here as "pending"
+// and becomes a column. Off by default so other people's StediMail never knocks on their own computer.
+const STEDITASK_URL = 'http://127.0.0.1:8093/api/mail/sync';
+const STEDITASK_MS = 30 * 1000;
+
+let stediTaskBusy = null;   // one sync at a time; a change made during one is sent straight after it
+function linkStediTask() {
+  if (stediTaskBusy) { stediTaskBusy.again = true; return; }
+  stediTaskBusy = { again: false };
+  syncStediTask().finally(() => { const again = stediTaskBusy.again; stediTaskBusy = null; if (again) linkStediTask(); });
+}
+
+async function syncStediTask() {
+  if (!store.get('stediTaskLink', false) || !store.account || !state.token || !settings.columnsSaved) return;
+  const renames = store.get('stediTaskRenames', []);
+  try {
+    const res = await fetch(STEDITASK_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: store.account, columns: settings.columns, renames }),
+    });
+    const r = await res.json();
+    if (!r.ok) throw new Error(r.message || res.status);
+    store.set('stediTaskRenames', store.get('stediTaskRenames', []).slice(renames.length));
+    const have = [settings.inboxName, ...settings.columns].map((n) => n.toLowerCase());
+    for (const name of r.pending || []) {
+      if (have.includes(name.toLowerCase())) continue;
+      addColumn(name.replace(/\//g, '-'));
+      if (settings.columns.some((n) => n.toLowerCase() === name.replace(/\//g, '-').toLowerCase())) toast(`Added the “${name}” column from StediTask.`);
+    }
+    if (r.created?.length) toast(`New in StediTask: ${r.created.join(', ')}`);
+  } catch {}   // the StediTask window isn't running here: try again next time
 }
 
 function disarmDelete() {
@@ -4911,6 +4950,7 @@ function wireUi() {
     }
     settings.barColor = $('#set-barcolor').value.toLowerCase() === DEFAULT_BAR ? null : $('#set-barcolor').value;
     store.set('barColor', settings.barColor);
+    store.set('stediTaskLink', $('#set-steditask').checked);
     applySettings(result);
   });
   // The color previews live; Cancel (or Esc) puts the saved one back.
@@ -4949,6 +4989,8 @@ function wireUi() {
   }
   setInterval(() => { if (document.visibilityState === 'visible') loadBoard(); }, REFRESH_MS);
   setInterval(watchMailbox, WATCH_MS);
+  setInterval(linkStediTask, STEDITASK_MS);
+  linkStediTask();
 }
 
 async function start() {
