@@ -5407,6 +5407,10 @@ function openTaskDialog(opts = {}) {
   const del = editing ? el('button', { type: 'button', class: 'danger' }, 'Delete') : null;
   const cancel = el('button', { type: 'button' }, 'Cancel');
   const save = el('button', { type: 'button', class: 'primary' }, editing ? 'Save' : 'Add task');
+  // Adding: two buttons, so where it goes is always asked (Paul, 2026-11-08). It's always on the task board.
+  const saveBoard = editing ? null : el('button', { type: 'button' }, 'Add to task board only');
+  let boardOnly = false;
+  saveBoard?.addEventListener('click', () => { boardOnly = true; save.click(); boardOnly = false; });
   const msg = el('p', { class: 'error', role: 'alert' });
   const dlg = el('dialog', { class: 'ask task-edit', 'aria-label': editing ? 'Edit task' : 'New task' }, [
     el('h2', {}, editing ? 'Task' : 'New task'),
@@ -5420,7 +5424,7 @@ function openTaskDialog(opts = {}) {
     editing ? el('div', { class: 'field' }, [el('span', {}, 'Start (for the Timeline)'), start]) : null,
     inMailRow,
     msg,
-    el('div', { class: 'ask-buttons' }, [del, el('div', { class: 'spacer' }), cancel, save]),
+    el('div', { class: 'ask-buttons' }, [del, el('div', { class: 'spacer' }), cancel, saveBoard, save]),
   ]);
   const finish = () => { dlg.close(); dlg.remove(); };
   cancel.addEventListener('click', finish);
@@ -5446,6 +5450,7 @@ function openTaskDialog(opts = {}) {
   dlg.addEventListener('click', (e) => { if (downOutside && e.target === dlg && outside(e)) leave(); downOutside = false; });
   title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save.click(); } });
   save.addEventListener('click', () => {
+    if (!editing && !saveBoard.hidden) inMailBox.checked = !boardOnly;   // which Add button was pressed
     const name = title.value.trim();
     if (!name) { msg.textContent = 'Say what the task is.'; title.focus(); return; }
     const a = alarm.value === '' ? null : Number(alarm.value);
@@ -5479,7 +5484,14 @@ function openTaskDialog(opts = {}) {
     taskToast(`Deleted: ${editing.title}`);
   });
   const hasMail = (name) => name === GENERAL || settings.columns.includes(name);
-  const syncMailRow = () => { inMailRow.hidden = !hasMail(editing ? editing.project : project.value); };
+  const syncMailRow = () => {
+    const mail = hasMail(editing ? editing.project : project.value);
+    if (editing) { inMailRow.hidden = !mail; return; }
+    inMailRow.hidden = true;   // the two Add buttons say it instead
+    saveBoard.hidden = !mail;
+    save.textContent = mail ? 'Add to task board + mail column' : 'Add task';
+    if (mail) inMailBox.checked = true;
+  };
   project?.addEventListener('change', syncMailRow);
   syncMailRow();
   document.body.append(dlg);

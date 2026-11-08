@@ -343,7 +343,7 @@ dialog { border: 1px solid var(--border); border-radius: 12px; background: var(-
 dialog form { display: flex; flex-direction: column; gap: .9rem; }
 dialog label { display: flex; flex-direction: column; gap: .3rem; }
 dialog label.check { flex-direction: row; }
-dialog label.check[hidden] { display: none; }
+dialog label.check[hidden], dialog .ask-buttons button[hidden] { display: none; }
 dialog .field { display: flex; flex-direction: column; gap: .4rem; }
 .col-list { display: flex; flex-direction: column; gap: .4rem; }
 .col-row { display: flex; gap: .25rem; align-items: center; }
@@ -671,7 +671,7 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .card.task-card .task-bell { font-size: 1.6rem; margin-left: 0; flex: none; }
 .card.task-card .task-when { display: block; margin-top: .15rem; color: var(--muted); }
 .card.task-card .task-when.late { color: #d9534f; font-weight: 700; }
-.card.task-card .task-desc { margin-top: .25rem; font-size: .86rem; line-height: 1.25; font-weight: normal; white-space: pre-wrap; overflow-wrap: anywhere;
+.card.task-card .task-desc { margin-top: .25rem; font-size: .775rem; line-height: 1.25; font-weight: normal; white-space: pre-wrap; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }   /* two lines, then … (Paul, 2026-11-08) */
 .card.task-card .colab { font-weight: 700; color: var(--text); }
 .card.task-card:not(.collapsed) { padding-right: 2.9rem; }   /* room for the corner */
