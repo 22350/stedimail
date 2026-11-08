@@ -655,15 +655,16 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
    bell and title, and the people after "CoLab:" (Paul, 2026-11-08) */
 /* Task cards, in the mail columns and StediTask (Paul, 2026-11-08): heavy outline, 10% darker; the name big on top,
    the description below at normal weight, people after "CoLab:" one per line, Delete on the last line. */
-.card.task-card { border: 2px solid var(--text); background: color-mix(in srgb, var(--panel) 90%, #000); padding: .55rem .85rem; min-height: 0; flex: none; }
+.card.task-card { border: 2px solid var(--text); background: color-mix(in srgb, var(--panel) 76%, #000); padding: .55rem .85rem; min-height: 0; flex: none; }   /* 10% darker, then 15% darker again (Paul, 2026-11-08) */
 .card.task-card .top { display: flex; gap: .6rem; align-items: center; }
-.card.task-card .task-head { flex: 1; font-size: 2.3rem; font-weight: 300; line-height: 1.1; overflow-wrap: break-word; min-width: 0; }
+.card.task-card .task-head { flex: 1; font-size: 2rem; font-weight: normal; line-height: 1.15; overflow-wrap: break-word; min-width: 0; }
 .task-bell { display: inline-flex; color: var(--muted); vertical-align: -.15em; margin-left: .3rem; }
 .task-bell svg { width: 1.05em; height: 1.05em; }
 .card.task-card .task-bell { font-size: 1.6rem; margin-left: 0; flex: none; }
 .card.task-card .task-when { display: block; margin-top: .15rem; color: var(--muted); }
 .card.task-card .task-when.late { color: #d9534f; font-weight: 700; }
-.card.task-card .task-desc { margin-top: .25rem; font-size: 2rem; line-height: 1.2; font-weight: normal; white-space: pre-wrap; overflow-wrap: anywhere; }
+.card.task-card .task-desc { margin-top: .25rem; font-size: 1.4rem; line-height: 1.25; font-weight: normal; white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }   /* two lines, then … (Paul, 2026-11-08) */
 .card.task-card .colab { font-weight: 700; color: var(--text); }
 .card.task-card .task-last { display: flex; align-items: flex-end; gap: .75rem; margin-top: .25rem; }
 .card.task-card .task-last > :first-child { flex: 1; min-width: 0; }
