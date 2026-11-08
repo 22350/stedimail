@@ -2366,6 +2366,18 @@ const dragGhost = {
   },
 };
 
+// The ✕ in the boxed buttons (column close, task delete, project close), drawn so every one is the same size
+// and dead centre (a typed ✕ sits differently in bold and normal text) (Paul, 2026-11-08).
+function xIcon() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'x-icon');
+  svg.innerHTML = '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>';
+  return svg;
+}
+
 function iconButton(label, name, run, text) {
   const b = el('button', { class: 'icon-btn', title: label, 'aria-label': label, draggable: 'false' }, name ? icon(name) : text);
   b.addEventListener('click', (e) => { e.stopPropagation(); run(b); });
@@ -2624,7 +2636,7 @@ function noMatches(q) {
 
 function renderSearchColumn() {
   const { q, title, more } = state.search;
-  const close = el('button', { class: 'icon-btn boxed', title: 'Close', 'aria-label': 'Close' }, '✕');
+  const close = el('button', { class: 'icon-btn boxed', title: 'Close', 'aria-label': 'Close' }, xIcon());
   close.addEventListener('click', clearSearch);
   // Each folder/label remembers its own sort; all free-text searches share one.
   const col = { name: 'folder:' + (title || '') };
@@ -2780,7 +2792,7 @@ function renderColumn(col, i) {
   const sortBtn = iconButton(`Sort: ${sort.label}`, 'sort', (b) => openSortMenu(b, col));
   if (sort.key !== 'newest') sortBtn.classList.add('on');
   sortBtn.classList.add('boxed');   // in a box like the add-task ✓ (Paul, 2026-11-08)
-  const closeBtn = i > 0 ? iconButton(`Remove column “${col.name}”`, null, () => removeColumn(i), '✕') : null;
+  const closeBtn = i > 0 ? iconButton(`Remove column “${col.name}”`, null, () => removeColumn(i), xIcon()) : null;
   closeBtn?.classList.add('boxed');   // square box like ✓ and sort (Paul, 2026-11-08)
   // Tells Stediclick's magnet to aim at this button's left end, away from the column-width handle beside it.
   (closeBtn || sortBtn).classList.add('steady-aim-left');
@@ -4819,7 +4831,7 @@ function projectTab(p, list, on) {
   if (!on || p.general) return [tab];
   // The chosen project's ✕ sits inside its button, boxed like the column buttons (Paul, 2026-11-08).
   tab.classList.replace('task-tab', 'tab-main');
-  const remove = el('button', { type: 'button', class: 'add-task-btn tab-x', title: `Remove project “${p.name}”`, 'aria-label': `Remove project “${p.name}”` }, '✕');
+  const remove = el('button', { type: 'button', class: 'add-task-btn tab-x', title: `Remove project “${p.name}”`, 'aria-label': `Remove project “${p.name}”` }, xIcon());
   remove.addEventListener('click', (e) => { e.stopPropagation(); removeTaskProject(p.name); });
   return [el('div', { class: 'task-tab has-x', 'aria-pressed': 'true', style: `--tab: ${projectColor(p.name, list)}` }, [tab, remove])];
 }
@@ -4961,7 +4973,7 @@ function renderTaskColumn(project, col, last) {
   ]));
   if (sort.key !== 'mine') sortBtn.classList.add('on');
   sortBtn.classList.add('boxed');   // in a box like the add-task ✓ (Paul, 2026-11-08)
-  const remove = p.columns.length > 1 ? iconButton(`Remove column “${col}”`, null, () => removeTaskColumn(project, col), '✕') : null;
+  const remove = p.columns.length > 1 ? iconButton(`Remove column “${col}”`, null, () => removeTaskColumn(project, col), xIcon()) : null;
   remove?.classList.add('boxed');
   (remove || sortBtn).classList.add('steady-aim-left');
   const first = p.columns[0] === col;
@@ -5387,7 +5399,7 @@ function taskCardParts(t, { finished = false, finish = null, tagColor = null } =
     return [el('div', { class: 'top' }, [el('span', { class: 'task-head task-title' }, t.title), t.alarm != null ? bellIcon() : null,
       t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, taskWhenText(t)) : null, finish])];
   }
-  const del = el('button', { type: 'button', class: 'task-delete', title: 'Delete task', 'aria-label': `Delete task: ${t.title}` }, '✕');   // a square red ✕ (Paul, 2026-11-08)
+  const del = el('button', { type: 'button', class: 'task-delete', title: 'Delete task', 'aria-label': `Delete task: ${t.title}` }, xIcon());   // a square red ✕ (Paul, 2026-11-08)
   del.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(t.id); });
   const desc = t.notes ? el('div', { class: 'task-desc' }, t.notes) : null;
   const people = t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
@@ -5395,9 +5407,11 @@ function taskCardParts(t, { finished = false, finish = null, tagColor = null } =
   const head = el('span', { class: 'task-head task-title' }, t.title);
   const top = el('div', { class: 'top' }, [head, finish]);
   const due = t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, 'Due ' + taskWhenText(t)) : null;
-  // The bell with the red ✕ under it, tucked into the top right corner (Paul, 2026-11-08).
-  const corner = el('div', { class: 'task-corner' }, [t.alarm != null ? bellIcon() : null, del]);
-  const body = [corner, top, due, desc, people];
+  // The red ✕ always in the top right corner; the bell, bigger, in the middle of the right side (Paul, 2026-11-08).
+  const corner = el('div', { class: 'task-corner' }, del);
+  const bell = t.alarm != null ? bellIcon() : null;
+  bell?.classList.add('task-bell-side');
+  const body = [corner, bell, top, due, desc, people];
   return [tagColor ? el('div', { class: 'task-proj', style: `--tab:${tagColor}` }, t.project) : null, ...body];
 }
 

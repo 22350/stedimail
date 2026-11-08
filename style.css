@@ -674,15 +674,22 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .card.task-card .colab { font-weight: 700; color: var(--text); }
 .card.task-card:not(.collapsed) { padding-right: 2.9rem; }   /* room for the corner */
 .card.task-card .task-corner { position: absolute; top: .35rem; right: .35rem; display: flex; flex-direction: column; align-items: center; gap: .25rem; }
-.card.task-card .task-corner .task-bell { font-size: 1.35rem; margin: 0; }
+.card.task-card .task-bell.task-bell-side { position: absolute; right: .45rem; top: 50%; transform: translateY(-50%); font-size: 1.9rem; margin: 0; }
 .card.task-card .task-people { margin-top: .3rem; }
 .card.task-card .task-delete { flex: none; width: 29px; height: 29px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
   font-size: 1.23rem; line-height: 1; border-radius: 8px; color: var(--text);
   background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); }   /* square red ✕, like the red Downloads button */
+/* Every boxed ✕ the same drawn icon, the same size, centred */
+.column h2 .icon-btn.boxed .x-icon, .card.task-card .task-delete .x-icon, .task-tab.has-x .tab-x .x-icon { width: 17px; height: 17px; display: block; }
 .card.task-card .task-delete:hover { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
 .card.task-card .task-people { display: flex; align-items: flex-start; font-weight: normal; }
 .card.task-card .colab-list { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .card.task-card .task-finish { position: static; transform: none; flex: none; }
+/* The ✓ the same size and kind of tint as the red ✕, in green (Paul, 2026-11-08) */
+.card.task-card .task-finish, .card.task-card.collapsed .task-finish { width: 29px; height: 29px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  border-radius: 8px; font-size: 1.1rem; line-height: 1; color: var(--text);
+  background: rgba(60, 190, 95, .16); border: 1px solid rgba(60, 190, 95, .45); }
+.card.task-card .task-finish:hover:not(:disabled) { background: rgba(60, 190, 95, .28); border-color: rgba(60, 190, 95, .7); color: var(--text); }
 .card.task-card.finished .task-head { text-decoration: line-through; }
 .card.task.task-card { padding-right: 2.9rem; min-height: 0; }
 .card.task.task-card.collapsed { padding-right: .85rem; }   /* no old 52px minimum: a folded card is even top and bottom */ 
