@@ -2366,6 +2366,18 @@ const dragGhost = {
   },
 };
 
+// A double-click with a longer gap allowed between the two clicks than the computer's own (Paul, 2026-11-08):
+// two clicks on the same thing within DOUBLE_CLICK_MS. Clicks on buttons and fields inside don't count.
+const DOUBLE_CLICK_MS = 500;
+function onDoubleClick(node, run, skip = 'button, input') {
+  let last = 0;
+  node.addEventListener('click', (e) => {
+    if (e.target.closest(skip)) { last = 0; return; }
+    const now = Date.now();
+    if (now - last <= DOUBLE_CLICK_MS) { last = 0; run(e); } else last = now;
+  });
+}
+
 // The ✕ in the boxed buttons (column close, task delete, project close), drawn so every one is the same size
 // and dead centre (a typed ✕ sits differently in bold and normal text) (Paul, 2026-11-08).
 function xIcon() {
@@ -2813,10 +2825,7 @@ function renderColumn(col, i) {
   ]);
   node.append(...resizeHandles(node));
   head.title = 'Double-click to minimize or restore this column';
-  head.addEventListener('dblclick', (e) => {
-    if (e.target.closest('button, input') || matchMedia('(max-width: 640px)').matches) return;
-    toggleCollapsed(col, node);
-  });
+  onDoubleClick(head, () => { if (!matchMedia('(max-width: 640px)').matches) toggleCollapsed(col, node); });
   const clearMarks = () => node.classList.remove('drop', 'insert-before', 'insert-after');
   if (columnMovable(col, i)) {
     head.draggable = true;
@@ -4994,10 +5003,7 @@ function renderTaskColumn(project, col, last) {
     [head, el('div', { class: 'cards' }, items.map((t) => renderTask(t, last))), add]);
   node.append(...resizeHandles(node));
   head.title = 'Double-click to minimize or restore this column';
-  head.addEventListener('dblclick', (e) => {
-    if (e.target.closest('button, input') || matchMedia('(max-width: 640px)').matches) return;
-    toggleTaskCollapsed(p, col, node);
-  });
+  onDoubleClick(head, () => { if (!matchMedia('(max-width: 640px)').matches) toggleTaskCollapsed(p, col, node); });
   if (!last) {
     head.draggable = true;
     head.classList.add('grab');
@@ -5402,24 +5408,27 @@ function deleteTask(id) {
 }
 
 // Double-click a task card to fold it to one line (and back), like minimizing a column (Paul, 2026-11-08).
-// A single click opens the task, a moment later so a double-click can be told apart.
-const TASK_DBL_MS = 260;
+// A single click opens the task once the double-click time has passed with no second click.
 function wireTaskCard(card, t) {
   let timer = null;
   card.addEventListener('click', (e) => {
     if (e.target.closest('button')) return;
-    clearTimeout(timer);
-    timer = setTimeout(() => openTaskDialog({ id: t.id }), TASK_DBL_MS);
-  });
-  card.addEventListener('dblclick', (e) => {
-    if (e.target.closest('button')) return;
-    clearTimeout(timer);
-    const task = findTask(t.id);
-    task.collapsed = !task.collapsed;
-    saveTasks(`${task.collapsed ? 'Folded' : 'Unfolded'} “${task.title}”`);
-    if (tasks.open) renderTasks(); else render();
+    if (timer) {   // the second click: fold or unfold
+      clearTimeout(timer);
+      timer = null;
+      toggleTaskFold(t.id);
+      return;
+    }
+    timer = setTimeout(() => { timer = null; openTaskDialog({ id: t.id }); }, DOUBLE_CLICK_MS);
   });
   card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) openTaskDialog({ id: t.id }); });
+}
+
+function toggleTaskFold(id) {
+  const task = findTask(id);
+  task.collapsed = !task.collapsed;
+  saveTasks(`${task.collapsed ? 'Folded' : 'Unfolded'} “${task.title}”`);
+  if (tasks.open) renderTasks(); else render();
 }
 
 function taskCardParts(t, { finished = false, finish = null, tagColor = null } = {}) {
