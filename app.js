@@ -2621,7 +2621,7 @@ function noMatches(q) {
 
 function renderSearchColumn() {
   const { q, title, more } = state.search;
-  const close = el('button', { class: 'icon-btn', title: 'Close', 'aria-label': 'Close' }, '✕');
+  const close = el('button', { class: 'icon-btn boxed', title: 'Close', 'aria-label': 'Close' }, '✕');
   close.addEventListener('click', clearSearch);
   // Each folder/label remembers its own sort; all free-text searches share one.
   const col = { name: 'folder:' + (title || '') };
@@ -2778,6 +2778,7 @@ function renderColumn(col, i) {
   if (sort.key !== 'newest') sortBtn.classList.add('on');
   sortBtn.classList.add('boxed');   // in a box like the add-task ✓ (Paul, 2026-11-08)
   const closeBtn = i > 0 ? iconButton(`Remove column “${col.name}”`, null, () => removeColumn(i), '✕') : null;
+  closeBtn?.classList.add('boxed');   // square box like ✓ and sort (Paul, 2026-11-08)
   // Tells Stediclick's magnet to aim at this button's left end, away from the column-width handle beside it.
   (closeBtn || sortBtn).classList.add('steady-aim-left');
   const taskBtn = addTaskButton(`Add a task to ${col.inbox ? GENERAL : col.name}`, () => openTaskDialog({ project: col.inbox ? GENERAL : col.name }));
@@ -4898,6 +4899,7 @@ function renderTaskColumn(project, col, last) {
   if (sort.key !== 'mine') sortBtn.classList.add('on');
   sortBtn.classList.add('boxed');   // in a box like the add-task ✓ (Paul, 2026-11-08)
   const remove = p.columns.length > 1 ? iconButton(`Remove column “${col}”`, null, () => removeTaskColumn(project, col), '✕') : null;
+  remove?.classList.add('boxed');
   (remove || sortBtn).classList.add('steady-aim-left');
   const first = p.columns[0] === col;
   const plus = first ? addTaskButton(`Add a task to ${project}`, () => openTaskDialog({ project, col }), 'plus') : null;
@@ -5268,10 +5270,13 @@ function renderMailTaskCard(t) {
     'aria-label': `Task: ${t.title}${t.due ? ', due ' + taskWhenText(t) : ''}. Open it` }, [
     el('div', { class: 'top' }, [el('span', { class: 'task-flag' }, 'Task'), t.alarm != null ? bellIcon() : null,
       t.due ? el('time', { class: late ? 'late' : '' }, taskWhenText(t)) : null]),
-    el('div', { class: 'task-title' }, t.title),
-    t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
-      t.people.map((p) => (p.name ? `${p.name} <${p.addr}>` : p.addr)).join(', ')]) : null,
-    el('div', { class: 'task-actions' }, del),
+    // Delete sits on the last line of text, at its right (Paul, 2026-11-08).
+    ...(() => {
+      const title = el('div', { class: 'task-title' }, t.title);
+      const people = t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
+        t.people.map((p) => (p.name ? `${p.name} <${p.addr}>` : p.addr)).join(', ')]) : null;
+      return people ? [title, el('div', { class: 'task-last' }, [people, del])] : [el('div', { class: 'task-last' }, [title, del])];
+    })(),
   ]);
   card.addEventListener('click', () => openTaskDialog({ id: t.id }));
   card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) openTaskDialog({ id: t.id }); });

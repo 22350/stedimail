@@ -642,6 +642,7 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .column h2 .icon-btn.boxed { width: 34px; height: 34px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
   border-radius: 8px; border: 1px solid currentColor; background: transparent; opacity: .75; }
 .column h2 .icon-btn.boxed svg { width: 22px; height: 22px; }
+.column h2 .icon-btn.boxed:not(:has(svg)) { font-size: 1.45rem; line-height: 1; }   /* the ✕ */
 .column h2 .icon-btn.boxed:hover { opacity: 1; background: rgba(255,255,255,.12); }
 .column h2 .icon-btn.boxed.on { opacity: 1; }
 .column h2 .add-task-btn { flex: none; width: 34px; height: 34px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
@@ -662,7 +663,10 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .card.task-in-mail time.late { color: #d9534f; font-weight: 700; }
 .card.task-in-mail .task-title { margin-top: .25rem; font-size: 2rem; line-height: 1.2; }
 .card.task-in-mail .colab { font-weight: 700; color: var(--text); }
-.card.task-in-mail .task-actions { display: flex; justify-content: flex-end; margin-top: .5rem; }
+.card.task-in-mail { padding-top: .25rem; padding-bottom: .25rem; }   /* close to the text, same top and bottom */
+.card.task-in-mail .task-last { display: flex; align-items: flex-end; gap: .75rem; }
+.card.task-in-mail .task-last > :first-child { flex: 1; min-width: 0; }
+.card.task-in-mail .task-last .task-delete { flex: none; }
 .card.task-in-mail .task-delete { min-height: 40px; padding: 0 1.1rem; font-weight: 700; border-radius: 8px;
   background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); color: inherit; }
 .card.task-in-mail .task-delete:hover { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
