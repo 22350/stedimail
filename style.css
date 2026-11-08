@@ -343,6 +343,7 @@ dialog { border: 1px solid var(--border); border-radius: 12px; background: var(-
 dialog form { display: flex; flex-direction: column; gap: .9rem; }
 dialog label { display: flex; flex-direction: column; gap: .3rem; }
 dialog label.check { flex-direction: row; }
+dialog label.check[hidden] { display: none; }
 dialog .field { display: flex; flex-direction: column; gap: .4rem; }
 .col-list { display: flex; flex-direction: column; gap: .4rem; }
 .col-row { display: flex; gap: .25rem; align-items: center; }

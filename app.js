@@ -5397,6 +5397,9 @@ function openTaskDialog(opts = {}) {
     el('option', { value: v == null ? '' : String(v), selected: (t.alarm ?? null) === v ? '' : null }, label)));
   const start = el('input', { type: 'date', value: t.start || '', 'aria-label': 'Start date' });
   const inMailBox = el('input', { type: 'checkbox', checked: t.hideInMail ? null : '' });   // brings back one taken out of the mail
+  // Adding too: untick it to put the task on the task board only (Paul, 2026-11-08). Shown only when the
+  // task's project has a mail column (General shows in the Inbox).
+  const inMailRow = el('label', { class: 'check' }, [inMailBox, 'Show in the StediMail column']);
   // Adding: which project (from All projects or a mail column whose project you may want to change).
   const list = taskProjects();
   const project = editing ? null : el('select', { 'aria-label': 'Project' }, list.map((p) =>
@@ -5415,14 +5418,14 @@ function openTaskDialog(opts = {}) {
     el('label', {}, ['Alarm', alarm]),
     project ? el('label', {}, ['Project', project]) : null,
     editing ? el('div', { class: 'field' }, [el('span', {}, 'Start (for the Timeline)'), start]) : null,
-    editing ? el('label', { class: 'check' }, [inMailBox, 'Show in the StediMail column']) : null,
+    inMailRow,
     msg,
     el('div', { class: 'ask-buttons' }, [del, el('div', { class: 'spacer' }), cancel, save]),
   ]);
   const finish = () => { dlg.close(); dlg.remove(); };
   cancel.addEventListener('click', finish);
   // Clicking outside the task (or Esc) closes it; with changes made, it asks first (Paul, 2026-11-08).
-  const fields = [title, notes, people, due, time, alarm, start, project, editing ? inMailBox : null].filter(Boolean);
+  const fields = [title, notes, people, due, time, alarm, start, project, inMailBox].filter(Boolean);
   const snapshot = () => fields.map((f) => (f.type === 'checkbox' ? String(f.checked) : f.value)).join('\u0001');
   const opened = snapshot();
   let asking = false;
@@ -5459,7 +5462,7 @@ function openTaskDialog(opts = {}) {
       if ((d.hidden || []).includes(proj)) d.hidden = d.hidden.filter((x) => x !== proj);   // its button comes back
       const p = taskProject(proj);
       const col = p.columns.includes(opts.col) ? opts.col : p.columns[0];
-      insertTaskByDate({ id: crypto.randomUUID(), ...fields, project: proj, col, added: Date.now() });
+      insertTaskByDate({ id: crypto.randomUUID(), ...fields, project: proj, col, added: Date.now(), ...(inMailBox.checked ? {} : { hideInMail: true }) });
       saveTasks(`Added “${name}”`);
       taskToast(`Added “${name}” to ${proj}`);
     }
@@ -5475,6 +5478,10 @@ function openTaskDialog(opts = {}) {
     if (tasks.open) renderTasks(); else render();
     taskToast(`Deleted: ${editing.title}`);
   });
+  const hasMail = (name) => name === GENERAL || settings.columns.includes(name);
+  const syncMailRow = () => { inMailRow.hidden = !hasMail(editing ? editing.project : project.value); };
+  project?.addEventListener('change', syncMailRow);
+  syncMailRow();
   document.body.append(dlg);
   attachContactSuggest(people);
   dlg.showModal();
