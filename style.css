@@ -742,6 +742,12 @@ body:not(.tasks-on) .bar h1 .task-logo, body.tasks-on .bar h1 .mail-logo { displ
 .task-tab[aria-pressed="true"] { background: var(--tab); color: #fff; }
 .task-tab[aria-pressed="true"] .count { background: rgba(255,255,255,.3); color: #fff; }
 .task-tab:hover:not(:disabled) { filter: brightness(1.15); }
+/* The chosen project's ✕ inside its button (Paul, 2026-11-08) */
+.task-tab.has-x { padding-right: .45rem; }
+.task-tab.has-x .tab-main { all: unset; display: inline-flex; align-items: center; gap: .6rem; cursor: pointer; align-self: stretch; }
+.task-tab.has-x .tab-x { flex: none; width: 29px; height: 29px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  border-radius: 8px; border: 1px solid currentColor; background: transparent; color: inherit; font-size: 1rem; line-height: 1; opacity: .8; }
+.task-tab.has-x .tab-x:hover { opacity: 1; background: rgba(255,255,255,.15); }
 .task-tab.add-project { --tab: var(--muted); border-style: dashed; font-weight: 600; margin-left: .8rem; }
 .task-tab-input { min-height: 46px; min-width: 240px; margin-left: .8rem; }
 .task-cols { flex: 1; min-height: 0; display: flex; gap: 1rem; overflow-x: auto; }

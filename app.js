@@ -4817,8 +4817,37 @@ function projectTab(p, list, on) {
   [p.name, el('span', { class: 'count' }, String(open))]);
   tab.addEventListener('click', () => { store.set('taskProject', p.name); renderTasks(); });
   if (!on || p.general) return [tab];
-  const remove = iconButton(`Remove project “${p.name}”`, null, () => removeTaskProject(p.name), '✕');
-  return [tab, remove];
+  // The chosen project's ✕ sits inside its button, boxed like the column buttons (Paul, 2026-11-08).
+  tab.classList.replace('task-tab', 'tab-main');
+  const remove = el('button', { type: 'button', class: 'add-task-btn tab-x', title: `Remove project “${p.name}”`, 'aria-label': `Remove project “${p.name}”` }, '✕');
+  remove.addEventListener('click', (e) => { e.stopPropagation(); removeTaskProject(p.name); });
+  return [el('div', { class: 'task-tab has-x', 'aria-pressed': 'true', style: `--tab: ${projectColor(p.name, list)}` }, [tab, remove])];
+}
+
+// A project is going: its unfinished tasks move to General (they show under All projects), into a column
+// of the same name if General has one, else its first; finished ones go with the project (Paul, 2026-11-08).
+function dropTaskProject(d, name) {
+  const g = taskProject(GENERAL);
+  let moved = 0;
+  for (const t of d.items) {
+    if (t.project !== name || isFinishedTask(t)) continue;
+    t.project = GENERAL;
+    if (!g.columns.includes(t.col)) t.col = g.columns[0];
+    moved++;
+  }
+  d.items = d.items.filter((t) => t.project !== name);
+  d.projects = d.projects.filter((p) => p.name !== name);
+  return moved;
+}
+
+function removeQuestion(name, d, lead) {
+  const open = d.items.filter((t) => t.project === name && !isFinishedTask(t)).length;
+  const done = d.items.filter((t) => t.project === name && isFinishedTask(t)).length;
+  const notes = [
+    open ? `Its ${open} unfinished task${open > 1 ? 's' : ''} will be moved to All projects (into General).` : '',
+    done ? `Its ${done} finished task${done > 1 ? 's go' : ' goes'} with it.` : '',
+  ].filter(Boolean).join(' ');
+  return notes ? `${lead}\n\n${notes}` : lead;
 }
 
 function renderAddProject() {
@@ -4866,11 +4895,9 @@ function renderAddProject() {
 // without its project is listed in "hidden" so its button doesn't come back.
 async function removeTaskProject(name) {
   const d = tasksData();
-  const inIt = d.items.filter((t) => t.project === name);
-  if (!await askConfirm(`Remove the “${name}” project${inIt.length ? ` and its ${inIt.length} task${inIt.length > 1 ? 's' : ''}` : ''}?`, 'Remove')) return;
-  d.projects = d.projects.filter((p) => p.name !== name);
-  d.items = d.items.filter((t) => t.project !== name);
-  let said = `Removed project “${name}”`;
+  if (!await askConfirm(removeQuestion(name, d, `Close the “${name}” task board?`), 'Close it')) return;
+  const moved = dropTaskProject(d, name);
+  let said = `Removed project “${name}”${moved ? ` (${moved} task${moved > 1 ? 's' : ''} moved to General)` : ''}`;
   if (settings.columns.includes(name)) {
     renderTasks();
     const mail = await askConfirm(`Also remove the “${name}” column in StediMail?\n\nIts emails keep their label in Gmail. With No, the column stays in StediMail.`,
@@ -4900,12 +4927,10 @@ async function askRemoveTaskProject(name) {
     return undo;
   }
   if (!n && !d.projects.some((p) => p.name === name)) return null;
-  const yes = await askConfirm(`Also delete the “${name}” project in StediTask${n ? ` and its ${n} task${n > 1 ? 's' : ''}` : ''}?\n\nWith No, it stays in StediTask as a project of its own.`,
+  const yes = await askConfirm(removeQuestion(name, d, `Also delete the “${name}” project in StediTask?`) + '\n\nWith No, it stays in StediTask as a project of its own.',
     'Yes, delete the project', { cancelLabel: 'No, keep the project' });
-  if (yes) {
-    d.projects = d.projects.filter((p) => p.name !== name);
-    d.items = d.items.filter((t) => t.project !== name);
-  } else taskProject(name).own = true;
+  if (yes) dropTaskProject(d, name);
+  else taskProject(name).own = true;
   saveTasks(null);
   if (tasks.open) renderTasks();
   return undo;
