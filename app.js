@@ -2402,10 +2402,16 @@ const UNDO_MAX = 30;
 function renderUndo() {
   const b = $('#btn-undo');
   if (!b) return;
-  const last = undoStack[undoStack.length - 1];
+  // In StediTask the buttons work on the task steps; in the mail, on the mail changes.
+  const last = tasks.open ? taskHistory.undo[taskHistory.undo.length - 1] : undoStack[undoStack.length - 1];
   b.disabled = !last;
   b.title = last ? `Undo: ${last.what} (Ctrl+Z)` : 'Nothing to undo';
   b.setAttribute('aria-label', last ? `Undo: ${last.what}` : 'Undo (nothing to undo)');
+  const r = $('#btn-redo');
+  const next = tasks.open ? taskHistory.redo[taskHistory.redo.length - 1] : null;
+  r.hidden = !next;
+  r.title = next ? `Redo: ${next.what} (Ctrl+Shift+Z)` : '';
+  r.setAttribute('aria-label', next ? `Redo: ${next.what}` : 'Redo');
 }
 async function runUndo(entry) {
   const i = undoStack.indexOf(entry);
@@ -2416,6 +2422,7 @@ async function runUndo(entry) {
   catch (e) { if (!(e instanceof AuthError)) toast('Undo failed: ' + e.message); }
 }
 function undoLast() {
+  if (tasks.open) { taskUndo(); return; }
   const last = undoStack[undoStack.length - 1];
   if (last) runUndo(last); else toast('Nothing to undo.');
 }
@@ -2424,7 +2431,7 @@ function toast(msg, action) {
   const box = $('#toast');
   box.replaceChildren(el('span', {}, msg));
   if (action) {
-    const entry = action.label === 'Undo' ? { what: msg, run: action.run } : null;
+    const entry = action.label === 'Undo' && action.stack !== false ? { what: msg, run: action.run } : null;
     if (entry) {
       undoStack.push(entry);
       undoStack.splice(0, Math.max(0, undoStack.length - UNDO_MAX));
@@ -2491,6 +2498,7 @@ function openColumnPicker() {
 
 function saveColumnList(list, reloadAfter = 0) {
   settings.columns = list;
+  if (!tasks.changingColumns) taskBaseColumns();
   settings.columnsSaved = true;
   settings.columnLabels = Object.fromEntries(Object.entries(settings.columnLabels).filter(([k]) => list.includes(k)));
   store.set('columnLabels', settings.columnLabels);
@@ -2501,14 +2509,15 @@ function saveColumnList(list, reloadAfter = 0) {
   linkStediTask();
 }
 
-async function removeColumn(i, afterDelete = false) {
+async function removeColumn(i, afterDelete = false, { askTasks = true } = {}) {
   const before = [...settings.columns];
   const name = before[i - 1];
   const said = (normal) => afterDelete ? `Moved everything in “${name}” to Trash and closed the column.` : normal;
   const id = state.labelIds[name];
   const own = isOwnLabel(name);
   const beforeLabels = { ...settings.columnLabels };
-  const undo = () => { settings.columnLabels = beforeLabels; saveColumnList(before); };
+  const undoTasks = askTasks ? await askRemoveTaskProject(name) : null;
+  const undo = () => { settings.columnLabels = beforeLabels; saveColumnList(before); undoTasks?.(); };
   saveColumnList(before.filter((_, k) => k !== i - 1));
   if (own) {               // one of their own labels: it stays exactly as it was in Gmail
     toast(said(`Removed the “${name}” column. Your label is unchanged.`), { label: 'Undo', run: undo });
@@ -4311,8 +4320,10 @@ async function applySettings({ inboxName, cols, clientId }) {
       c.name = c.orig;
     }
   }
+  const gone = settings.columns.filter((n) => !cols.some((c) => c.orig === n));
   settings.inboxName = inboxName;
   settings.columns = cols.map((c) => c.name);
+  taskBaseColumns();
   store.set('inboxName', settings.inboxName);
   store.set('columns', settings.columns);
   if (clientId && clientId !== settings.clientId) {
@@ -4324,6 +4335,7 @@ async function applySettings({ inboxName, cols, clientId }) {
   render();
   loadBoard();
   linkStediTask();
+  for (const name of gone) await askRemoveTaskProject(name);
 }
 
 // ---------- the StediTask window on this computer (Paul, 2026-11-08) ----------
@@ -4385,14 +4397,78 @@ const TASK_START_COLS = ['To do', 'Doing', 'Finished'];
 const tasksAuth = { token: null, exp: 0, pending: null };
 const tasks = {
   open: false,
-  data: null,         // { projects: [{ name, columns: [...], own }], items: [{ id, title, notes, due, project, col }] }
+  data: null,         // { projects: [{ name, columns, own, sorts, collapsed }], hidden: [mail columns with no project], items: [{ id, title, notes, due, project, col, added }] }
   saveTimer: null,
   synced: false,       // read from Google this session
+  changingColumns: false,   // a task step is adding or removing a mail column (part of that step)
 };
+
+// Undo / redo in StediTask (Paul, 2026-11-08): every task change is a step that keeps the tasks before and
+// after it, and the mail columns too when the step made or removed one. Undo goes back a step, redo forward;
+// a new change clears the redo steps. Kept while StediMail is open.
+const taskHistory = { undo: [], redo: [], base: null };
+const TASK_HISTORY_MAX = 50;
+const sameCols = (a, b) => JSON.stringify(a.columns) === JSON.stringify(b.columns);
+
+function taskSnap() {
+  return { data: JSON.stringify(tasksData()), columns: [...settings.columns], labels: { ...settings.columnLabels } };
+}
+
+// The mail columns changed outside StediTask: not a task step.
+function taskBaseColumns() {
+  if (!taskHistory.base) return;
+  taskHistory.base.columns = [...settings.columns];
+  taskHistory.base.labels = { ...settings.columnLabels };
+}
+
+function recordTask(what) {
+  const before = taskHistory.base, after = taskSnap();
+  taskHistory.base = after;
+  if (!before || (before.data === after.data && sameCols(before, after))) return;
+  taskHistory.undo.push({ what, before, after, cols: !sameCols(before, after) });
+  taskHistory.undo.splice(0, Math.max(0, taskHistory.undo.length - TASK_HISTORY_MAX));
+  taskHistory.redo = [];
+  renderUndo();
+}
+
+function applyTaskSnap(snap, cols) {
+  tasks.data = upgradeTasks(JSON.parse(snap.data));
+  if (cols) {
+    settings.columnLabels = { ...snap.labels };
+    tasks.changingColumns = true;
+    saveColumnList([...snap.columns]);
+    tasks.changingColumns = false;
+  }
+  saveTasks(null);
+  if (tasks.open) renderTasks();
+}
+
+function taskUndo() {
+  const step = taskHistory.undo.pop();
+  if (!step) { toast('Nothing to undo.'); return; }
+  applyTaskSnap(step.before, step.cols);
+  taskHistory.redo.push(step);
+  renderUndo();
+  toast(`Undone: ${step.what}`);
+}
+
+function taskRedo() {
+  const step = taskHistory.redo.pop();
+  if (!step) return;
+  applyTaskSnap(step.after, step.cols);
+  taskHistory.undo.push(step);
+  renderUndo();
+  toast(`Redone: ${step.what}`);
+}
+
+// A task change's message: its Undo is the same as the Undo button.
+function taskToast(msg) { toast(msg, { label: 'Undo', run: taskUndo, stack: false }); }
 
 function tasksData() {
   if (!tasks.data) tasks.data = store.get('tasks', null) || { projects: [], items: [] };
-  return upgradeTasks(tasks.data);
+  upgradeTasks(tasks.data);
+  if (!taskHistory.base) taskHistory.base = { data: JSON.stringify(tasks.data), columns: [...settings.columns], labels: { ...settings.columnLabels } };
+  return tasks.data;
 }
 
 // Before 2026-11-08 each project was a single column (its name in t.col) with a done flag.
@@ -4437,7 +4513,10 @@ async function pullTasks() {
       if (id || tasksData().items.length || tasksData().projects.length) await pushTasks();
     } else {
       const remote = await (await tasksFetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`)).json();
-      tasks.data = upgradeTasks({ projects: remote.projects, columns: remote.columns || [], items: remote.items || [] });
+      tasks.data = upgradeTasks({ projects: remote.projects, hidden: remote.hidden || [], columns: remote.columns || [], items: remote.items || [] });
+      Object.assign(taskHistory, { undo: [], redo: [], base: null });
+      tasksData();
+      renderUndo();
       store.set('tasks', tasks.data);
     }
     tasks.synced = true;
@@ -4478,7 +4557,8 @@ function tasksOffline(why) {
 
 // Called from clicks, so a Google window for the permission isn't blocked; the upload waits a moment so
 // quick changes go up together.
-function saveTasks() {
+function saveTasks(what = 'change') {
+  if (what === null) taskHistory.base = taskSnap(); else recordTask(what);
   store.set('tasks', tasksData());
   store.set('tasksDirty', true);
   if (!tasks.synced) return;   // pullTasks() sends it once connected
@@ -4497,6 +4577,7 @@ function openTasks() {
   $('#btn-tasks').setAttribute('aria-label', 'Back to StediMail');
   if (!$('#reader').hidden) closeReader();
   renderTasks();
+  renderUndo();
   if (!tasks.synced) pullTasks();
 }
 
@@ -4506,6 +4587,7 @@ function closeTasks() {
   $('#btn-tasks').setAttribute('aria-pressed', 'false');
   $('#btn-tasks').title = 'Tasks';
   $('#btn-tasks').setAttribute('aria-label', 'Tasks');
+  renderUndo();
 }
 
 function findTask(id) { return tasksData().items.find((t) => t.id === id); }
@@ -4517,16 +4599,22 @@ function renameTaskProject(from, to) {
   for (const t of d.items) if (t.project === from) { t.project = to; changed = true; }
   const p = d.projects.find((x) => x.name === from);
   if (p && !d.projects.some((x) => x.name === to)) { p.name = to; changed = true; }
+  if (d.hidden?.includes(from)) { d.hidden = d.hidden.map((x) => (x === from ? to : x)); changed = true; }
   if (store.get('taskProject', '') === from) store.set('taskProject', to);
-  if (changed) saveTasks();
+  if (changed) saveTasks(null);
 }
 
 // One project per mail column (not the Inbox), then the ones made here only, then any that lost their mail
 // column but still have tasks.
+// "All projects" and "General" came back from the StediTask window (Paul, 2026-11-08): All shows every project's
+// tasks together; General is a standing project for tasks that belong to no mail column.
+const ALL_PROJECTS = '*all*';
+const GENERAL = 'General';
+
 function taskProjects() {
   const d = tasksData();
-  const mail = settings.columns;
-  const list = mail.map((name) => ({ name, mail: true }));
+  const mail = settings.columns.filter((name) => !(d.hidden || []).includes(name) && name !== GENERAL);
+  const list = [{ name: GENERAL, general: true }, ...mail.map((name) => ({ name, mail: true }))];
   const has = (name) => list.some((x) => x.name === name);
   for (const p of d.projects) if (!has(p.name) && (p.own || d.items.some((t) => t.project === p.name))) list.push({ name: p.name });
   for (const t of d.items) if (!has(t.project)) list.push({ name: t.project });
@@ -4543,7 +4631,14 @@ function taskProject(name) {
 }
 
 function currentTaskProject(list = taskProjects()) {
-  return (list.find((p) => p.name === store.get('taskProject', '')) || list[0])?.name || null;
+  const want = store.get('taskProject', ALL_PROJECTS);
+  return list.find((p) => p.name === want)?.name || ALL_PROJECTS;
+}
+
+function projectColor(name, list = taskProjects()) {
+  if (name === GENERAL) return '#808a96';
+  const i = list.filter((p) => !p.general).findIndex((p) => p.name === name);
+  return TAB_COLORS[Math.max(i, 0) % TAB_COLORS.length];
 }
 
 // The last column is where finished tasks go.
@@ -4555,27 +4650,129 @@ function isFinishedTask(t) {
 function renderTasks() {
   const box = $('#tasks');
   const scrolls = [...box.querySelectorAll('.cards')].map((c) => c.scrollTop);
+  const ganttScroll = box.querySelector('.gantt')?.scrollLeft;
   const list = taskProjects();
   const cur = currentTaskProject(list);
+  const view = store.get('taskView', 'board');
+  for (const b of document.querySelectorAll('#task-views button')) b.setAttribute('aria-pressed', String(b.dataset.view === view));
   const tabs = el('div', { class: 'task-tabs', role: 'group', 'aria-label': 'Projects' },
-    [...list.flatMap((p, i) => projectTab(p, i, p.name === cur)), renderAddProject()]);
-  const cols = cur
-    ? [...taskProject(cur).columns.map((c, i, all) => renderTaskColumn(cur, c, i === all.length - 1)), renderAddTaskColumn(cur)]
-    : [el('p', { class: 'hint task-empty' }, 'Each StediMail column is a project here. Add a column in StediMail, or a project with + New project.')];
-  box.replaceChildren(tabs, el('div', { class: 'task-cols' }, cols));
+    [allProjectsTab(cur === ALL_PROJECTS), ...list.flatMap((p) => projectTab(p, list, p.name === cur)), renderAddProject()]);
+  let body;
+  if (view === 'timeline') body = renderTimeline(cur === ALL_PROJECTS ? list : list.filter((p) => p.name === cur), list);
+  else if (cur === ALL_PROJECTS) body = el('div', { class: 'task-cols' }, renderAllColumns(list));
+  else body = el('div', { class: 'task-cols' },
+    [...taskProject(cur).columns.map((c, i, all) => renderTaskColumn(cur, c, i === all.length - 1)), renderAddTaskColumn(cur)]);
+  box.replaceChildren(tabs, body);
   box.querySelectorAll('.cards').forEach((c, i) => { c.scrollTop = scrolls[i] || 0; });
+  const gantt = box.querySelector('.gantt');
+  if (gantt) gantt.scrollLeft = ganttScroll ?? Math.max(0, Number(gantt.dataset.today) - 320);
 }
 
-const TAB_COLORS = ['#3b82c4', '#9b59b6', '#c8643f', '#2a9d8f', '#b8860b', '#5d8f2f', '#c2417a', '#4b6bd6', '#808a96'];
+function setTaskView(view) {
+  store.set('taskView', view);
+  renderTasks();
+}
 
-function projectTab(p, i, on) {
+function allProjectsTab(on) {
+  const d = tasksData();
+  const open = d.items.filter((t) => !isFinishedTask(t)).length;
+  const tab = el('button', { type: 'button', class: 'task-tab all', 'aria-pressed': String(on), title: 'Every project together' },
+    ['All projects', el('span', { class: 'count' }, String(open))]);
+  tab.addEventListener('click', () => { store.set('taskProject', ALL_PROJECTS); renderTasks(); });
+  return tab;
+}
+
+// All projects: the columns of every project side by side by name (each project's last, "finished", column at
+// the end), each card saying which project it's in. A card moves only to a column its own project has.
+function renderAllColumns(list) {
+  const middle = [], lasts = [];
+  for (const p of list) {
+    const cols = taskProject(p.name).columns;
+    cols.forEach((c, i) => { const into = i === cols.length - 1 ? lasts : middle; if (!into.includes(c)) into.push(c); });
+  }
+  const order = [...middle.filter((c) => !lasts.includes(c)), ...lasts];
+  const names = list.map((p) => p.name);
+  const items = tasksData().items.filter((t) => names.includes(t.project));
+  return order.map((col) => {
+    const here = items.filter((t) => t.col === col);
+    const node = el('section', { class: 'column task-col all-col', 'data-col': col }, [
+      el('h2', {}, [col, el('span', { class: 'count' }, String(here.length))]),
+      el('div', { class: 'cards' }, here.map((t) => renderTask(t, isFinishedTask(t), projectColor(t.project, list)))),
+    ]);
+    node.append(...resizeHandles(node));
+    node.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer.types.includes(TASK_DRAG)) return;
+      e.preventDefault();
+      node.classList.add('drop');
+    });
+    node.addEventListener('dragleave', (e) => { if (!node.contains(e.relatedTarget)) node.classList.remove('drop'); });
+    node.addEventListener('drop', (e) => {
+      const id = e.dataTransfer.getData(TASK_DRAG);
+      if (!id) return;
+      e.preventDefault();
+      node.classList.remove('drop');
+      const t = findTask(id);
+      if (!taskProject(t.project).columns.includes(col)) { toast(`“${t.project}” has no “${col}” column.`); return; }
+      if (t.col !== col) moveTask(id, col);
+    });
+    return node;
+  });
+}
+
+// Timeline, like the StediTask window's: weeks across the top, a line for today, a bar per task from its start
+// (or the day it was added) to its due date, grouped by project. Click a task to edit it.
+function renderTimeline(projects, list) {
+  const DAY = 864e5, W = 30;
+  const iso = (ms) => new Date(ms).toLocaleDateString('en-CA');
+  const at = (s) => new Date(s + 'T00:00').getTime();
+  const addDays = (ms, n) => { const d = new Date(ms); d.setDate(d.getDate() + n); return d.getTime(); };   // calendar days, so a clock change doesn't shift them
+  const todayIso = iso(Date.now()), today = at(todayIso);
+  const startOf = (t) => t.start || (t.added ? iso(t.added) : '') || t.due || todayIso;
+  const endOf = (t) => (t.due && t.due >= startOf(t) ? t.due : startOf(t));
+  const names = projects.map((p) => p.name);
+  const items = tasksData().items.filter((t) => names.includes(t.project));
+  const first = Math.min(addDays(today, -7), ...items.map((t) => at(startOf(t))));
+  const start = addDays(first, -((new Date(first).getDay() + 6) % 7));   // a Monday
+  const last = Math.max(addDays(today, 56), ...items.map((t) => at(endOf(t))));
+  const days = Math.round((last - start) / DAY) + 7, width = days * W;
+  const x = (s) => Math.round((at(s) - start) / DAY) * W;
+  const weeks = [];
+  for (let i = 0; i < days; i += 7) weeks.push(i);
+  const grid = () => weeks.map((i) => el('div', { class: 'gday', style: `left:${i * W}px` }));
+  const track = (kids) => el('div', { class: 'gtrack', style: `width:${width}px` }, [...grid(), el('div', { class: 'gtoday', style: `left:${x(todayIso)}px`, title: 'Today' }), ...kids]);
+  const rows = [el('div', { class: 'grow ghead' }, [el('div', { class: 'glabel' }, 'Week of'),
+    el('div', { class: 'gtrack', style: `width:${width}px` }, weeks.map((i) => el('div', { class: 'gweek', style: `left:${i * W}px` },
+      new Date(addDays(start, i)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))))])];
+  for (const p of projects) {
+    const tasksIn = items.filter((t) => t.project === p.name).sort((a, b) => startOf(a).localeCompare(startOf(b)));
+    if (!tasksIn.length) continue;
+    const pc = projectColor(p.name, list);
+    rows.push(el('div', { class: 'grow gproj', style: `--pc:${pc}` }, [el('div', { class: 'glabel' }, p.name), track([])]));
+    for (const t of tasksIn) {
+      const a = x(startOf(t)), b = x(endOf(t)) + W;
+      const done = isFinishedTask(t), late = !done && t.due && t.due < todayIso;
+      const label = `${t.title}: ${dueText(startOf(t))}${t.due ? ' to ' + dueText(t.due) : ', no due date'}${late ? ', late' : ''}${done ? ', finished' : ''}`;
+      const name = el('button', { type: 'button', class: 'gname' }, t.title);
+      const bar = el('button', { type: 'button', class: 'gbar' + (done ? ' done' : '') + (late ? ' late' : '') + (t.due ? '' : ' nodue'),
+        style: `left:${a}px;width:${Math.max(b - a, W)}px`, title: label, 'aria-label': label });
+      for (const n of [name, bar]) n.addEventListener('click', () => editTask(t.id));
+      rows.push(el('div', { class: 'grow', style: `--pc:${pc}` }, [el('div', { class: 'glabel' }, name), track([bar])]));
+    }
+  }
+  if (rows.length === 1) rows.push(el('p', { class: 'hint task-empty' }, 'No tasks here yet.'));
+  return el('div', { class: 'gantt', 'data-today': String(x(todayIso)) }, rows);
+}
+
+const TAB_COLORS = ['#3b82c4', '#9b59b6', '#c8643f', '#2a9d8f', '#b8860b', '#5d8f2f', '#c2417a', '#4b6bd6'];
+
+function projectTab(p, list, on) {
   const d = tasksData();
   const open = d.items.filter((t) => t.project === p.name && !isFinishedTask(t)).length;
   const tab = el('button', { type: 'button', class: 'task-tab', 'aria-pressed': String(on),
-    title: p.mail ? 'Also a StediMail column' : 'StediTask only', style: `--tab: ${TAB_COLORS[i % TAB_COLORS.length]}` },
+    title: p.general ? 'Tasks that belong to no mail column' : p.mail ? 'Also a StediMail column' : 'StediTask only', style: `--tab: ${projectColor(p.name, list)}` },
   [p.name, el('span', { class: 'count' }, String(open))]);
   tab.addEventListener('click', () => { store.set('taskProject', p.name); renderTasks(); });
-  if (!on || p.mail) return [tab];
+  if (!on || p.general) return [tab];
   const remove = iconButton(`Remove project “${p.name}”`, null, () => removeTaskProject(p.name), '✕');
   return [tab, remove];
 }
@@ -4592,17 +4789,27 @@ function renderAddProject() {
       e.preventDefault();
       const name = input.value.trim().replace(/\//g, '-');
       if (!name) { renderTasks(); return; }
-      if (name.toLowerCase() === settings.inboxName.toLowerCase() || taskProjects().some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+      const hid = (tasksData().hidden || []).find((x) => x.toLowerCase() === name.toLowerCase());
+      if (hid) {   // its mail column is still there: just bring the project back
+        tasksData().hidden = tasksData().hidden.filter((x) => x !== hid);
+        store.set('taskProject', hid);
+        saveTasks(`Brought back project “${hid}”`);
+        renderTasks();
+        return;
+      }
+      if ([settings.inboxName, 'All projects'].some((n) => n.toLowerCase() === name.toLowerCase()) || taskProjects().some((p) => p.name.toLowerCase() === name.toLowerCase())) {
         toast(`There's already a “${name}” project.`); return;
       }
       input.disabled = true;   // its blur would otherwise redraw the board under the question
       const mail = await askConfirm(`Also make a “${name}” column in StediMail?\n\nIts emails would sit in that column. With No, the project is in StediTask only.`,
         'Yes, make a column', { cancelLabel: 'No, StediTask only', danger: false });
+      tasks.changingColumns = true;
       if (mail) addColumn(name);
+      tasks.changingColumns = false;
       const p = taskProject(name);
       if (!settings.columns.includes(name)) p.own = true;   // No, or the mail column couldn't be made (nine at most)
       store.set('taskProject', name);
-      saveTasks();
+      saveTasks(`New project “${name}”`);
       renderTasks();
     });
     input.addEventListener('blur', () => { if (!input.value.trim()) setTimeout(() => { if (input.isConnected) renderTasks(); }); });
@@ -4610,16 +4817,54 @@ function renderAddProject() {
   return add;
 }
 
+// Removing a project here asks about its mail column, and removing a mail column asks about its project
+// (Paul, 2026-11-08). A project kept without its column becomes a StediTask-only one; a mail column kept
+// without its project is listed in "hidden" so its button doesn't come back.
 async function removeTaskProject(name) {
   const d = tasksData();
   const inIt = d.items.filter((t) => t.project === name);
   if (!await askConfirm(`Remove the “${name}” project${inIt.length ? ` and its ${inIt.length} task${inIt.length > 1 ? 's' : ''}` : ''}?`, 'Remove')) return;
-  const before = JSON.parse(JSON.stringify(d));
   d.projects = d.projects.filter((p) => p.name !== name);
   d.items = d.items.filter((t) => t.project !== name);
-  saveTasks();
+  let said = `Removed project “${name}”`;
+  if (settings.columns.includes(name)) {
+    renderTasks();
+    const mail = await askConfirm(`Also remove the “${name}” column in StediMail?\n\nIts emails keep their label in Gmail. With No, the column stays in StediMail.`,
+      'Yes, remove the column', { cancelLabel: 'No, keep the column' });
+    if (mail) {   // part of the same step, so one undo brings back both
+      tasks.changingColumns = true;
+      saveColumnList(settings.columns.filter((n) => n !== name));
+      tasks.changingColumns = false;
+      said += ' and its StediMail column';
+    } else d.hidden = [...new Set([...(d.hidden || []), name])];
+  }
+  saveTasks(said);
   renderTasks();
-  toast(`Removed project “${name}”`, { label: 'Undo', run: () => { tasks.data = before; saveTasks(); if (tasks.open) renderTasks(); } });
+  taskToast(said);
+}
+
+// A mail column is going: ask about its project, if it has one in use. Returns an undo for what it changed.
+async function askRemoveTaskProject(name) {
+  const d = tasksData();
+  const hidden = (d.hidden || []).includes(name);
+  const n = d.items.filter((t) => t.project === name).length;
+  const before = JSON.parse(JSON.stringify(d));
+  const undo = () => { tasks.data = before; saveTasks(null); if (tasks.open) renderTasks(); };
+  if (hidden) {   // its project was already removed: nothing to ask
+    d.hidden = d.hidden.filter((x) => x !== name);
+    saveTasks(null);
+    return undo;
+  }
+  if (!n && !d.projects.some((p) => p.name === name)) return null;
+  const yes = await askConfirm(`Also delete the “${name}” project in StediTask${n ? ` and its ${n} task${n > 1 ? 's' : ''}` : ''}?\n\nWith No, it stays in StediTask as a project of its own.`,
+    'Yes, delete the project', { cancelLabel: 'No, keep the project' });
+  if (yes) {
+    d.projects = d.projects.filter((p) => p.name !== name);
+    d.items = d.items.filter((t) => t.project !== name);
+  } else taskProject(name).own = true;
+  saveTasks(null);
+  if (tasks.open) renderTasks();
+  return undo;
 }
 
 // Task columns work like mail columns (Paul, 2026-11-08): count, sort menu (with Rename), ✕, drag the header to
@@ -4641,7 +4886,7 @@ function renderTaskColumn(project, col, last) {
   if (sort.cmp) items = [...items].sort(sort.cmp);
   const sortBtn = iconButton(`Sort: ${sort.label}`, 'sort', (b) => openMenu(b, [
     { heading: 'Sort' },
-    ...TASK_SORTS.map((x) => ({ label: x.label, checked: x.key === sort.key, run: () => { p.sorts = { ...p.sorts, [col]: x.key }; saveTasks(); renderTasks(); } })),
+    ...TASK_SORTS.map((x) => ({ label: x.label, checked: x.key === sort.key, run: () => { p.sorts = { ...p.sorts, [col]: x.key }; saveTasks(`Sorted “${col}” by ${x.label}`); renderTasks(); } })),
     { sep: true },
     { label: 'Rename column', run: () => renameColumnBox(project, col) },
   ]));
@@ -4712,14 +4957,14 @@ function moveTaskColumn(p, from, to, after) {
   list.splice(list.indexOf(to) + (after ? 1 : 0), 0, from);
   if (list[list.length - 1] !== p.columns[p.columns.length - 1]) return;   // the finished column stays last
   p.columns = list;
-  saveTasks();
+  saveTasks(`Moved column “${from}”`);
   renderTasks();
 }
 
 function toggleTaskCollapsed(p, col, node) {
   const on = !(p.collapsed || []).includes(col);
   p.collapsed = on ? [...(p.collapsed || []), col] : p.collapsed.filter((c) => c !== col);
-  saveTasks();
+  saveTasks(`${on ? 'Minimized' : 'Restored'} “${col}”`);
   const from = node.offsetWidth;
   node.classList.toggle('collapsed', on);
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -4748,7 +4993,7 @@ function renameColumnBox(project, col) {
         for (const t of tasksData().items) if (t.project === project && t.col === col) t.col = to;
         for (const key of ['sorts']) if (p[key]?.[col]) { p[key][to] = p[key][col]; delete p[key][col]; }
         if (p.collapsed?.includes(col)) p.collapsed = p.collapsed.map((c) => (c === col ? to : c));
-        saveTasks();
+        saveTasks(`Renamed “${col}” to “${to}”`);
       }
     }
     renderTasks();
@@ -4777,7 +5022,7 @@ function renderAddTaskColumn(project) {
       if (p.columns.some((c) => c.toLowerCase() === name.toLowerCase())) { toast(`There's already a “${name}” column.`); return; }
       // New columns go before the last one, so finished tasks stay at the end.
       p.columns.splice(Math.max(p.columns.length - 1, 0), 0, name);
-      saveTasks();
+      saveTasks(`New column “${name}”`);
       renderTasks();
     });
     input.addEventListener('blur', () => { if (!input.value.trim()) setTimeout(() => { if (input.isConnected) renderTasks(); }); });
@@ -4790,12 +5035,11 @@ async function removeTaskColumn(project, col) {
   const p = taskProject(project);
   const inIt = d.items.filter((t) => t.project === project && t.col === col);
   if (inIt.length && !await askConfirm(`Remove the “${col}” column and its ${inIt.length} task${inIt.length > 1 ? 's' : ''}?`, 'Remove')) return;
-  const before = JSON.parse(JSON.stringify(d));
   p.columns = p.columns.filter((c) => c !== col);
   d.items = d.items.filter((t) => !(t.project === project && t.col === col));
-  saveTasks();
+  saveTasks(`Removed column “${col}”`);
   renderTasks();
-  toast(`Removed column “${col}”`, { label: 'Undo', run: () => { tasks.data = before; saveTasks(); if (tasks.open) renderTasks(); } });
+  taskToast(`Removed column “${col}”`);
 }
 
 function moveTask(id, col, nextTo, before) {
@@ -4806,7 +5050,7 @@ function moveTask(id, col, nextTo, before) {
   t.col = col;
   const at = nextTo ? items.indexOf(findTask(nextTo)) + (before ? 0 : 1) : items.length;
   items.splice(at, 0, t);
-  saveTasks();
+  saveTasks(`Moved “${t.title}”`);
   renderTasks();
 }
 
@@ -4815,13 +5059,14 @@ function dueText(due) {
 }
 
 // ✓ sends a task to the last column (finished); in the last column, ↺ puts it back in the first.
-function renderTask(t, finished) {
+function renderTask(t, finished, tagColor = null) {
   const today = new Date().toLocaleDateString('en-CA');
   const finish = el('button', { type: 'button', class: 'task-finish', title: finished ? 'Not finished: put it back' : 'Mark finished',
     'aria-label': (finished ? 'Put back: ' : 'Mark finished: ') + t.title }, finished ? '↺' : '✓');
   finish.addEventListener('click', (e) => { e.stopPropagation(); finishTask(t.id, !finished); });
   const card = el('div', { class: 'card task' + (finished ? ' finished' : ''), tabindex: '0', role: 'button',
     'data-task': t.id, draggable: 'true', 'aria-label': `Task: ${t.title}. Open to edit` }, [
+    tagColor ? el('div', { class: 'task-proj', style: `--tab:${tagColor}` }, t.project) : null,
     el('div', { class: 'task-title' }, t.title),
     t.due ? el('div', { class: 'task-due' + (!finished && t.due < today ? ' late' : '') }, 'Due ' + dueText(t.due)) : null,
     t.notes ? el('div', { class: 'task-notes' }, t.notes) : null,
@@ -4850,7 +5095,7 @@ function addTaskBox(project, col, addBtn) {
     const title = input.value.trim();
     if (!title) { close(); return; }
     tasksData().items.push({ id: crypto.randomUUID(), title, notes: '', due: '', project, col, added: Date.now() });
-    saveTasks();
+    saveTasks(`Added “${title}”`);
     renderTasks();
     // Ready for the next one in the same column.
     [...$('#tasks').querySelectorAll('.task-col')].find((n) => n.dataset.col === col)?.querySelector('.add-task')?.click();
@@ -4863,13 +5108,10 @@ function finishTask(id, done) {
   const cols = taskProject(t.project).columns;
   const from = t.col;
   t.col = done ? cols[cols.length - 1] : cols[0];
-  saveTasks();
+  const said = done ? `Finished: ${t.title}` : `Put back: ${t.title}`;
+  saveTasks(said);
   renderTasks();
-  toast(done ? `Finished: ${t.title}` : `Put back: ${t.title}`, { label: 'Undo', run: () => {
-    t.col = from;
-    saveTasks();
-    if (tasks.open) renderTasks();
-  } });
+  taskToast(said);
 }
 
 function editTask(id) {
@@ -4880,12 +5122,16 @@ function editTask(id) {
   const due = el('input', { type: 'date', value: t.due || '', 'aria-label': 'Due date' });
   const clearDue = el('button', { type: 'button' }, 'No date');
   clearDue.addEventListener('click', () => { due.value = ''; });
+  const start = el('input', { type: 'date', value: t.start || '', 'aria-label': 'Start date' });
+  const clearStart = el('button', { type: 'button' }, 'No date');
+  clearStart.addEventListener('click', () => { start.value = ''; });
   const del = el('button', { type: 'button', class: 'danger' }, 'Delete');
   const cancel = el('button', { type: 'button' }, 'Cancel');
   const save = el('button', { type: 'button', class: 'primary' }, 'Save');
   const dlg = el('dialog', { class: 'ask task-edit', 'aria-label': 'Edit task' }, [
     el('label', {}, ['Task', title]),
     el('label', {}, ['Notes', notes]),
+    el('div', { class: 'field' }, [el('span', {}, 'Start (for the Timeline)'), el('div', { class: 'color-row' }, [start, clearStart])]),
     el('div', { class: 'field' }, [el('span', {}, 'Due'), el('div', { class: 'color-row' }, [due, clearDue])]),
     el('div', { class: 'ask-buttons' }, [del, el('div', { class: 'spacer' }), cancel, save]),
   ]);
@@ -4897,8 +5143,9 @@ function editTask(id) {
     t.title = title.value.trim() || t.title;
     t.notes = notes.value.trim();
     t.due = due.value;
+    t.start = start.value;
     finish();
-    saveTasks();
+    saveTasks(`Edited “${t.title}”`);
     renderTasks();
   });
   del.addEventListener('click', () => {
@@ -4906,13 +5153,9 @@ function editTask(id) {
     const items = tasksData().items;
     const at = items.indexOf(t);
     items.splice(at, 1);
-    saveTasks();
+    saveTasks(`Deleted: ${t.title}`);
     renderTasks();
-    toast(`Deleted: ${t.title}`, { label: 'Undo', run: () => {
-      items.splice(at, 0, t);
-      saveTasks();
-      if (tasks.open) renderTasks();
-    } });
+    taskToast(`Deleted: ${t.title}`);
   });
   document.body.append(dlg);
   dlg.showModal();
@@ -4925,6 +5168,13 @@ function onKey(e) {
       && !e.target.closest?.('input, textarea, [contenteditable], #reader')) {
     e.preventDefault();
     undoLast();
+    return;
+  }
+  // Ctrl+Shift+Z or Ctrl+Y: redo, in StediTask.
+  if (tasks.open && (e.ctrlKey || e.metaKey) && !e.altKey && ((e.shiftKey && e.key.toLowerCase() === 'z') || (!e.shiftKey && e.key.toLowerCase() === 'y'))
+      && !e.target.closest?.('input, textarea, [contenteditable], #reader')) {
+    e.preventDefault();
+    taskRedo();
     return;
   }
   // Typing in a field ignores shortcuts, except Esc inside the email window: it closes it (drafts are kept).
@@ -5176,6 +5426,8 @@ function wireUi() {
   });
   document.addEventListener('keydown', onKey);
   $('#btn-undo').addEventListener('click', undoLast);
+  $('#btn-redo').addEventListener('click', taskRedo);
+  for (const b of document.querySelectorAll('#task-views button')) b.addEventListener('click', () => setTaskView(b.dataset.view));
   $('#btn-downloads').addEventListener('click', (e) => { e.stopPropagation(); openDownloads(e.currentTarget); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && Date.now() - state.lastLoad > 60000) loadBoard();

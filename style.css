@@ -636,6 +636,43 @@ body:not(.tasks-on) #tasks, body:not(.tasks-on) #tasks-note { display: none !imp
 body.tasks-on #board, body.tasks-on #sidebar, body.tasks-on #bulk,
 body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picker, body.tasks-on #btn-menu { display: none !important; }
 .tasks-note { gap: 1rem; }
+/* StediTask: Board / Timeline where Compose and Download are in the mail (Paul, 2026-11-08) */
+.task-views { display: none; gap: 6px; }
+body.tasks-on .bar .task-views { display: inline-flex; }
+body.tasks-on #btn-compose, body.tasks-on #btn-downloads { display: none !important; }
+.task-views button { border-radius: 999px; padding: 0 1rem; min-height: 38px; font-weight: 600; }
+.task-views button[aria-pressed="true"] { background: var(--bar-text, #fff); color: var(--bar-bg, #1b1d21); border-color: var(--bar-text, #fff); }
+.task-tab.all { --tab: var(--text); }
+.task-tab.all[aria-pressed="true"] { color: var(--bg); }
+.task-tab.all[aria-pressed="true"] .count { color: var(--bg); }
+.task-proj { font-size: .8rem; font-weight: 700; color: var(--tab); margin-bottom: .15rem; }
+/* Timeline */
+.tasks-board .gantt { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.gantt .grow { display: grid; grid-template-columns: 280px max-content; min-height: 38px; border-bottom: 1px solid var(--border); }
+.gantt .glabel { position: sticky; left: 0; z-index: 2; background: var(--panel); padding: 8px 12px; border-right: 1px solid var(--border);
+  display: flex; align-items: center; font-size: .95rem; min-width: 0; }
+.gantt .gname { all: unset; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gantt .gname:hover { text-decoration: underline; }
+.gantt .ghead .glabel, .gantt .gproj .glabel { font-weight: 700; }
+.gantt .gproj, .gantt .gproj .glabel { background: color-mix(in srgb, var(--pc) 12%, var(--panel)); }
+.gantt .gproj .glabel { color: var(--pc); }
+.gantt .gtrack { position: relative; }
+.gantt .gday { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--border); }
+.gantt .gweek { position: absolute; top: 10px; font-size: .8rem; color: var(--muted); white-space: nowrap; padding-left: 4px; }
+.gantt .gtoday { position: absolute; top: 0; bottom: 0; border-left: 2px solid #3fbf7f; z-index: 1; }
+.gantt .gbar { position: absolute; top: 7px; height: 24px; min-height: 0; border-radius: 6px; background: var(--pc); border: 0; padding: 0; cursor: pointer; }
+.gantt .gbar.done { opacity: .35; }
+.gantt .gbar.late { box-shadow: 0 0 0 2px #d9534f; }
+.gantt .gbar.nodue { background: repeating-linear-gradient(45deg, var(--pc), var(--pc) 6px, transparent 6px, transparent 11px); border: 2px solid var(--pc); }
+/* StediTask: Undo is a square icon button; after an undo a red Redo button appears beside it (Paul, 2026-11-08) */
+#btn-undo .undo-icon { display: none; }
+body.tasks-on .bar #btn-undo, .bar #btn-redo { width: 38px; height: 38px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  font-size: 0; line-height: 1; border-radius: 8px; flex: 0 0 auto; }
+body.tasks-on .bar #btn-undo[hidden], .bar #btn-redo[hidden] { display: none; }
+body.tasks-on #btn-undo .undo-icon { display: block; }
+body.tasks-on #btn-undo::before { content: none; }
+.bar #btn-redo { margin-left: 10px; background: #c62828; border-color: #c62828; color: #fff; }
+.bar #btn-redo:hover { background: #e53935; border-color: #e53935; }
 /* In StediTask the button shows an envelope: click it to go back to StediMail (Paul, 2026-11-08) */
 body:not(.tasks-on) #btn-tasks .back-mail, body.tasks-on #btn-tasks .to-tasks { display: none; }
 /* With the tasks on, the bar says StediTask (Paul, 2026-11-08) */
