@@ -155,6 +155,8 @@ a.nav-main { color: var(--text); text-decoration: none; }
 .column.drop { background: var(--drop); border-color: var(--accent); }
 .column h2 { font-size: 1rem; margin: 0; padding: .1rem 1rem .1rem 2rem; display: flex; gap: .5rem; align-items: center; }
 .column h2 { background: var(--bar-bg); color: var(--bar-text); border-radius: 10px 10px 0 0; margin-bottom: .6rem; }
+/* Header bars never shorter than one whose name runs to two lines (Paul, 2026-11-08) */
+.column h2 { min-height: calc(2lh + .2rem); }
 .column .count { margin-left: auto; color: var(--bar-muted); font-weight: normal; }
 .column h2 .icon-btn { flex: none; width: 48px; min-height: 40px; font-size: 1.5rem; color: var(--bar-text); opacity: .65; }
 .column h2 .icon-btn svg { width: 31px; height: 31px; }
@@ -366,9 +368,9 @@ body.cols-sized .column { flex: 0 0 var(--col-w); max-width: none; width: var(--
   .column.collapsed, body.cols-sized .column.collapsed { flex: 0 0 auto; width: auto; max-width: none; background: var(--bar-bg); overflow: hidden; }
   .column.collapsed.drop { background: var(--drop); }
   .column.collapsed > :not(h2), .column.collapsed h2 > * { display: none; }
-  /* …except the add-task button, at the top of the strip (Paul, 2026-11-08) */
+  /* …except the add-task button, under the column's name (Paul, 2026-11-08) */
   .column.collapsed h2 > :not(.add-task-btn) { display: none !important; }   /* the boxed sort and ✕ too */
-  .column.collapsed h2 > .add-task-btn { display: inline-grid; order: -1; writing-mode: horizontal-tb; margin-bottom: .4rem; }
+  .column.collapsed h2 > .add-task-btn { display: inline-grid; writing-mode: horizontal-tb; margin-top: .4rem; }
   .column.collapsed h2 { flex: 1; min-height: 0; margin: 0; padding: .7rem .3rem; writing-mode: vertical-rl; white-space: nowrap; background: transparent; color: var(--bar-text); }
   .column.collapsed.drop h2 { color: var(--text); }
   .column.collapsed.new-mail, .column.collapsed.new-mail h2 { background: #c62828; color: #fff; }
@@ -681,13 +683,12 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .card.task-card .task-finish { position: static; transform: none; flex: none; }
 .card.task-card.finished .task-head { text-decoration: line-through; }
 .card.task.task-card { padding-right: .85rem; }
-/* A folded task: one line, in the top bar's button green, still with its outline (Paul, 2026-11-08) */
-.card.task-card.collapsed { background: color-mix(in srgb, var(--bar-bg) 92%, #fff); color: var(--bar-text); padding-top: .3rem; padding-bottom: .3rem; }
+/* A folded task: one line, same dark background and outline as an open one (Paul, 2026-11-08) */
+.card.task-card.collapsed { padding-top: .3rem; padding-bottom: .3rem; }
 .card.task-card.collapsed .top { gap: .5rem; }
 .card.task-card.collapsed .task-head { font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card.task-card.collapsed .task-bell { font-size: 1.05rem; color: var(--bar-muted); }
-.card.task-card.collapsed .task-when { margin: 0; flex: none; color: var(--bar-muted); font-size: .85rem; }
-.card.task-card.collapsed .task-when.late { color: #ff8a80; }
+.card.task-card.collapsed .task-bell { font-size: 1.05rem; }
+.card.task-card.collapsed .task-when { margin: 0; flex: none; font-size: .85rem; }
 .card.task-card.collapsed .task-finish { width: 30px; min-height: 30px; height: 30px; font-size: 1rem; }   /* the ✓ is in the top row now, not over the right edge */
 .task-people { font-size: .85rem; color: var(--muted); margin-top: .2rem; }
 dialog.task-edit h2 { margin: 0 0 .8rem; font-size: 1.2rem; }
@@ -769,7 +770,7 @@ dialog.task-edit textarea { resize: vertical; }
 dialog.task-edit .color-row { display: flex; gap: .6rem; }
 dialog.task-edit .color-row input { flex: 1; }
 dialog.task-edit .spacer { flex: 1; }
-.task-col h2 { min-height: 44px; }
+.task-col h2 { min-height: max(44px, calc(2lh + .2rem)); }
 /* Phones: one task column per screen, swipe sideways for the next */
 @media (max-width: 640px) {
   .task-cols { gap: .75rem; overflow-x: auto; scroll-snap-type: x mandatory; }
