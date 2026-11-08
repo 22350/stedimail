@@ -5073,10 +5073,10 @@ function renderTask(t, finished, tagColor = null) {
   const finish = el('button', { type: 'button', class: 'task-finish', title: finished ? 'Not finished: put it back' : 'Mark finished',
     'aria-label': (finished ? 'Put back: ' : 'Mark finished: ') + t.title }, finished ? '↺' : '✓');
   finish.addEventListener('click', (e) => { e.stopPropagation(); finishTask(t.id, !finished); });
-  const card = el('div', { class: 'card task task-card' + (finished ? ' finished' : ''), tabindex: '0', role: 'button',
+  const card = el('div', { class: 'card task task-card' + (finished ? ' finished' : '') + (t.collapsed ? ' collapsed' : ''), tabindex: '0', role: 'button',
+    title: t.collapsed ? 'Double-click to unfold' : 'Double-click to fold to one line',
     'data-task': t.id, draggable: 'true', 'aria-label': `Task: ${t.title}. Open to edit` }, taskCardParts(t, { finished, finish, tagColor }));
-  card.addEventListener('click', () => editTask(t.id));
-  card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) editTask(t.id); });
+  wireTaskCard(card, t);
   card.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData(TASK_DRAG, t.id);
     e.dataTransfer.effectAllowed = 'move';
@@ -5136,6 +5136,27 @@ function insertTaskByDate(t) {
   if (later < 0) items.push(t); else items.splice(later, 0, t);
 }
 
+// A question with several answers, e.g. [['keep', 'Keep editing'], ['save', 'Save', 'primary']]. Esc or a click
+// outside it answers with the first one.
+function askChoice(message, answers) {
+  return new Promise((resolve) => {
+    const dlg = el('dialog', { class: 'ask', 'aria-label': message });
+    let done = false;
+    const finish = (key) => { if (done) return; done = true; dlg.close(); dlg.remove(); resolve(key); };
+    const buttons = answers.map(([key, label, cls]) => {
+      const b = el('button', { type: 'button', class: cls || null }, label);
+      b.addEventListener('click', () => finish(key));
+      return b;
+    });
+    dlg.append(el('p', {}, message), el('div', { class: 'ask-buttons' }, buttons));
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(answers[0][0]); });
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) finish(answers[0][0]); });
+    document.body.append(dlg);
+    dlg.showModal();
+    buttons[buttons.length - 1].focus();
+  });
+}
+
 // opts: { id } to edit, or { project, col } to add (col: the project's first column if left out).
 function openTaskDialog(opts = {}) {
   const editing = opts.id ? findTask(opts.id) : null;
@@ -5175,7 +5196,26 @@ function openTaskDialog(opts = {}) {
   ]);
   const finish = () => { dlg.close(); dlg.remove(); };
   cancel.addEventListener('click', finish);
-  dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(); });
+  // Clicking outside the task (or Esc) closes it; with changes made, it asks first (Paul, 2026-11-08).
+  const fields = [title, notes, people, due, time, alarm, start, project].filter(Boolean);
+  const snapshot = () => fields.map((f) => f.value).join('\u0001');
+  const opened = snapshot();
+  let asking = false;
+  const leave = async () => {
+    if (asking) return;
+    if (snapshot() === opened || (!editing && !title.value.trim() && !notes.value.trim())) { finish(); return; }
+    asking = true;
+    const choice = await askChoice(editing ? 'Save your changes to this task?' : 'Add this task?', [
+      ['keep', 'Keep editing'], ['discard', editing ? "Don't save" : "Don't add"], ['save', editing ? 'Save changes' : 'Add task', 'primary']]);
+    asking = false;
+    if (choice === 'save') save.click();
+    else if (choice === 'discard') finish();
+  };
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); leave(); });
+  let downOutside = false;   // a press and release both outside the dialog box (not a drag out of a field)
+  const outside = (e) => { const r = dlg.getBoundingClientRect(); return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom; };
+  dlg.addEventListener('pointerdown', (e) => { downOutside = e.target === dlg && outside(e); });
+  dlg.addEventListener('click', (e) => { if (downOutside && e.target === dlg && outside(e)) leave(); downOutside = false; });
   title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save.click(); } });
   save.addEventListener('click', () => {
     const name = title.value.trim();
@@ -5257,8 +5297,33 @@ function deleteTask(id) {
   taskToast(`Deleted: ${t.title}`);
 }
 
+// Double-click a task card to fold it to one line (and back), like minimizing a column (Paul, 2026-11-08).
+// A single click opens the task, a moment later so a double-click can be told apart.
+const TASK_DBL_MS = 260;
+function wireTaskCard(card, t) {
+  let timer = null;
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('button')) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => openTaskDialog({ id: t.id }), TASK_DBL_MS);
+  });
+  card.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button')) return;
+    clearTimeout(timer);
+    const task = findTask(t.id);
+    task.collapsed = !task.collapsed;
+    saveTasks(`${task.collapsed ? 'Folded' : 'Unfolded'} “${task.title}”`);
+    if (tasks.open) renderTasks(); else render();
+  });
+  card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) openTaskDialog({ id: t.id }); });
+}
+
 function taskCardParts(t, { finished = false, finish = null, tagColor = null } = {}) {
   const late = !finished && t.due && taskMoment(t) < Date.now();
+  if (t.collapsed) {   // one line: the name, the bell, when it's due
+    return [el('div', { class: 'top' }, [el('span', { class: 'task-head task-title' }, t.title), t.alarm != null ? bellIcon() : null,
+      t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, taskWhenText(t)) : null, finish])];
+  }
   const del = el('button', { type: 'button', class: 'task-delete', 'aria-label': `Delete task: ${t.title}` }, 'Delete');
   del.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(t.id); });
   const desc = t.notes ? el('div', { class: 'task-desc' }, t.notes) : null;
@@ -5275,10 +5340,10 @@ function taskCardParts(t, { finished = false, finish = null, tagColor = null } =
 }
 
 function renderMailTaskCard(t) {
-  const card = el('article', { class: 'card task-card task-in-mail', tabindex: '0', role: 'button', 'data-task': t.id,
+  const card = el('article', { class: 'card task-card task-in-mail' + (t.collapsed ? ' collapsed' : ''), tabindex: '0', role: 'button', 'data-task': t.id,
+    title: t.collapsed ? 'Double-click to unfold' : 'Double-click to fold to one line',
     'aria-label': `Task: ${t.title}${t.due ? ', due ' + taskWhenText(t) : ''}. Open it` }, taskCardParts(t));
-  card.addEventListener('click', () => openTaskDialog({ id: t.id }));
-  card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) openTaskDialog({ id: t.id }); });
+  wireTaskCard(card, t);
   return card;
 }
 
