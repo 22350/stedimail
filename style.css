@@ -652,10 +652,12 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 /* Tasks shown in the mail columns: light red cards */
 /* Tasks in the mail columns: the normal card with a heavy outline (thicker than a selected card's), big TASK,
    bell and title, and the people after "CoLab:" (Paul, 2026-11-08) */
-.card.task-in-mail { border: 4px solid var(--text); }
+.card.task-in-mail { border: 2px solid var(--text); }   /* 4px halved (Paul, 2026-11-08) */
 .card.task-in-mail .top { display: flex; gap: .6rem; align-items: center; }
 .card.task-in-mail .task-flag { font-size: 1.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; line-height: 1.1; }
-.card.task-in-mail .task-bell { font-size: 1.6rem; line-height: 1; }
+.task-bell { display: inline-flex; color: var(--muted); vertical-align: -.15em; margin-left: .3rem; }
+.task-bell svg { width: 1.05em; height: 1.05em; }
+.card.task-in-mail .task-bell { font-size: 1.6rem; margin-left: 0; }
 .card.task-in-mail time { margin-left: auto; color: var(--muted); }
 .card.task-in-mail time.late { color: #d9534f; font-weight: 700; }
 .card.task-in-mail .task-title { margin-top: .25rem; font-size: 2rem; line-height: 1.2; }

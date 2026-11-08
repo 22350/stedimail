@@ -5077,7 +5077,7 @@ function renderTask(t, finished, tagColor = null) {
     tagColor ? el('div', { class: 'task-proj', style: `--tab:${tagColor}` }, t.project) : null,
     el('div', { class: 'task-title' }, t.title),
     t.due ? el('div', { class: 'task-due' + (!finished && taskMoment(t) < Date.now() && t.due <= today ? ' late' : '') },
-      'Due ' + taskWhenText(t) + (t.alarm != null ? ' 🔔' : '')) : null,
+      ['Due ' + taskWhenText(t), t.alarm != null ? bellIcon() : null]) : null,
     t.people?.length ? el('div', { class: 'task-people' }, peopleText(t.people)) : null,
     t.notes ? el('div', { class: 'task-notes' }, t.notes) : null,
     finish,
@@ -5223,6 +5223,13 @@ function openTaskDialog(opts = {}) {
 }
 const editTask = (id) => openTaskDialog({ id });
 
+// An alarm is set: a flat gray bell, drawn like the app's other icons (Paul, 2026-11-08).
+function bellIcon() {
+  const b = el('span', { class: 'task-bell', title: 'Alarm set', role: 'img', 'aria-label': 'Alarm set' });
+  b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
+  return b;
+}
+
 // The ✓ box in a column's title bar, and StediTask's + on To do.
 function addTaskButton(label, onClick, cls = '') {
   const b = el('button', { type: 'button', class: 'add-task-btn ' + cls, title: label, 'aria-label': label, draggable: 'false' });
@@ -5259,7 +5266,7 @@ function renderMailTaskCard(t) {
   });
   const card = el('article', { class: 'card task-in-mail', tabindex: '0', role: 'button', 'data-task': t.id,
     'aria-label': `Task: ${t.title}${t.due ? ', due ' + taskWhenText(t) : ''}. Open it` }, [
-    el('div', { class: 'top' }, [el('span', { class: 'task-flag' }, 'Task'), t.alarm != null ? el('span', { class: 'task-bell', title: 'Alarm set' }, '🔔') : null,
+    el('div', { class: 'top' }, [el('span', { class: 'task-flag' }, 'Task'), t.alarm != null ? bellIcon() : null,
       t.due ? el('time', { class: late ? 'late' : '' }, taskWhenText(t)) : null]),
     el('div', { class: 'task-title' }, t.title),
     t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
