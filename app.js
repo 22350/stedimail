@@ -5070,20 +5070,11 @@ function dueText(due) {
 
 // ✓ sends a task to the last column (finished); in the last column, ↺ puts it back in the first.
 function renderTask(t, finished, tagColor = null) {
-  const today = new Date().toLocaleDateString('en-CA');
   const finish = el('button', { type: 'button', class: 'task-finish', title: finished ? 'Not finished: put it back' : 'Mark finished',
     'aria-label': (finished ? 'Put back: ' : 'Mark finished: ') + t.title }, finished ? '↺' : '✓');
   finish.addEventListener('click', (e) => { e.stopPropagation(); finishTask(t.id, !finished); });
-  const card = el('div', { class: 'card task' + (finished ? ' finished' : ''), tabindex: '0', role: 'button',
-    'data-task': t.id, draggable: 'true', 'aria-label': `Task: ${t.title}. Open to edit` }, [
-    tagColor ? el('div', { class: 'task-proj', style: `--tab:${tagColor}` }, t.project) : null,
-    el('div', { class: 'task-title' }, t.title),
-    t.due ? el('div', { class: 'task-due' + (!finished && taskMoment(t) < Date.now() && t.due <= today ? ' late' : '') },
-      ['Due ' + taskWhenText(t), t.alarm != null ? bellIcon() : null]) : null,
-    t.people?.length ? el('div', { class: 'task-people' }, peopleText(t.people)) : null,
-    t.notes ? el('div', { class: 'task-notes' }, t.notes) : null,
-    finish,
-  ]);
+  const card = el('div', { class: 'card task task-card' + (finished ? ' finished' : ''), tabindex: '0', role: 'button',
+    'data-task': t.id, draggable: 'true', 'aria-label': `Task: ${t.title}. Open to edit` }, taskCardParts(t, { finished, finish, tagColor }));
   card.addEventListener('click', () => editTask(t.id));
   card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) editTask(t.id); });
   card.addEventListener('dragstart', (e) => {
@@ -5254,30 +5245,38 @@ function mailColumnTasks(col) {
   return d.items.filter((t) => t.project === name && !isFinishedTask(t));
 }
 
-function renderMailTaskCard(t) {
-  const late = t.due && taskMoment(t) < Date.now();
-  // Delete, in the see-through red of the other delete buttons (Paul, 2026-11-08); Undo brings it back.
+// One task card for the mail columns and StediTask (Paul, 2026-11-08): the task's name big on top with the
+// bell and due date, its description below, the people after "CoLab:" one per line, and Delete on the last line.
+// StediTask's cards add the ✓ (finished) at the top right.
+function deleteTask(id) {
+  const items = tasksData().items;
+  const t = findTask(id);
+  items.splice(items.indexOf(t), 1);
+  saveTasks(`Deleted: ${t.title}`);
+  if (tasks.open) renderTasks(); else render();
+  taskToast(`Deleted: ${t.title}`);
+}
+
+function taskCardParts(t, { finished = false, finish = null, tagColor = null } = {}) {
+  const late = !finished && t.due && taskMoment(t) < Date.now();
   const del = el('button', { type: 'button', class: 'task-delete', 'aria-label': `Delete task: ${t.title}` }, 'Delete');
-  del.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const items = tasksData().items;
-    items.splice(items.indexOf(findTask(t.id)), 1);
-    saveTasks(`Deleted: ${t.title}`);
-    render();
-    taskToast(`Deleted: ${t.title}`);
-  });
-  const card = el('article', { class: 'card task-in-mail', tabindex: '0', role: 'button', 'data-task': t.id,
-    'aria-label': `Task: ${t.title}${t.due ? ', due ' + taskWhenText(t) : ''}. Open it` }, [
-    el('div', { class: 'top' }, [el('span', { class: 'task-flag' }, 'Task'), t.alarm != null ? bellIcon() : null,
-      t.due ? el('time', { class: late ? 'late' : '' }, taskWhenText(t)) : null]),
-    // Delete sits on the last line of text, at its right (Paul, 2026-11-08).
-    ...(() => {
-      const title = el('div', { class: 'task-title' }, t.title);
-      const people = t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
-        t.people.map((p) => (p.name ? `${p.name} <${p.addr}>` : p.addr)).join(', ')]) : null;
-      return people ? [title, el('div', { class: 'task-last' }, [people, del])] : [el('div', { class: 'task-last' }, [title, del])];
-    })(),
-  ]);
+  del.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(t.id); });
+  const desc = t.notes ? el('div', { class: 'task-desc' }, t.notes) : null;
+  const people = t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
+    el('span', { class: 'colab-list' }, t.people.map((p) => el('span', {}, p.name ? `${p.name} <${p.addr}>` : p.addr)))]) : null;
+  const head = el('span', { class: 'task-head task-title' }, t.title);
+  const top = el('div', { class: 'top' }, [head, t.alarm != null ? bellIcon() : null, finish]);
+  const due = t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, 'Due ' + taskWhenText(t)) : null;
+  // Delete sits on the last line of text, at its right.
+  const lines = [top, due, desc, people].filter(Boolean);
+  const last = lines.pop();
+  const body = [...lines, el('div', { class: 'task-last' }, [last, del])];
+  return [tagColor ? el('div', { class: 'task-proj', style: `--tab:${tagColor}` }, t.project) : null, ...body];
+}
+
+function renderMailTaskCard(t) {
+  const card = el('article', { class: 'card task-card task-in-mail', tabindex: '0', role: 'button', 'data-task': t.id,
+    'aria-label': `Task: ${t.title}${t.due ? ', due ' + taskWhenText(t) : ''}. Open it` }, taskCardParts(t));
   card.addEventListener('click', () => openTaskDialog({ id: t.id }));
   card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) openTaskDialog({ id: t.id }); });
   return card;
