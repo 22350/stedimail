@@ -3686,7 +3686,7 @@ function dictationTools(editor) {
   const button = (cls) => el('button', { type: 'button', class: cls, title: label, 'aria-label': label, 'aria-pressed': 'false' }, icon('mic'));
   const toolbar = button('tool'), center = button('dictate-center');
   center.hidden = !!editor.innerText.trim();
-  let rec = null;
+  let rec = null, byVoice = false;
   const showListening = (on) => [toolbar, center].forEach((b) => {
     b.classList.toggle('listening', on);
     b.setAttribute('aria-pressed', String(on));
@@ -3702,7 +3702,9 @@ function dictationTools(editor) {
     after.selectNodeContents(editor);
     after.setStart(sel.focusNode, sel.focusOffset);
     const gap = (side, test) => (side.toString() && !test.test(side.toString()) ? ' ' : '');
+    byVoice = true;   // this typing is the microphone's, not the person's
     document.execCommand('insertText', false, gap(before, /\s$/) + text.trim() + gap(after, /^\s/));
+    byVoice = false;
   };
   const problems = {
     'not-allowed': 'Dictation needs permission to use the microphone',
@@ -3723,8 +3725,7 @@ function dictationTools(editor) {
     rec.onerror = (e) => { if (problems[e.error]) toast(problems[e.error]); };
     rec.onend = () => {
       rec = null;
-      showListening(false);
-      if (editor.innerText.trim()) center.hidden = true;           // it would sit on the words
+      showListening(false);   // the big button stays, ready to go again (Paul, 2026-11-08)
     };
     try {
       rec.start();
@@ -3735,14 +3736,10 @@ function dictationTools(editor) {
     b.addEventListener('mousedown', (e) => e.preventDefault());    // keep the cursor in the editor
     b.addEventListener('click', toggle);
   }
-  editor.addEventListener('input', () => { if (!rec) center.hidden = true; });   // typed, not dictated
-  // A touch anywhere else: the big button goes and the microphone goes off with it, unless the touch is on
-  // the toolbar button, whose own click decides.
-  const dismiss = (target) => {
-    if (center.hidden || center.contains(target)) return;
-    center.hidden = true;
-    if (rec && !toolbar.contains(target)) rec.stop();
-  };
+  // It goes only when the person types (Paul, 2026-11-08): a click in the message or anywhere else leaves it,
+  // and leaves it listening.
+  editor.addEventListener('input', () => { if (!byVoice) center.hidden = true; });
+  const dismiss = () => {};
   return { toolbar, center, dismiss };
 }
 
