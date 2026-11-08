@@ -2778,11 +2778,12 @@ function renderColumn(col, i) {
   const closeBtn = i > 0 ? iconButton(`Remove column “${col.name}”`, null, () => removeColumn(i), '✕') : null;
   // Tells Stediclick's magnet to aim at this button's left end, away from the column-width handle beside it.
   (closeBtn || sortBtn).classList.add('steady-aim-left');
+  const taskBtn = addTaskButton(`Add a task to ${col.inbox ? GENERAL : col.name}`, () => openTaskDialog({ project: col.inbox ? GENERAL : col.name }));
   const head = el('h2', {}, [columnCheckbox(i), col.name, el('span', { class: 'count' }, ids.length + (state.more[i] ? '+' : '')),
-    sortBtn, closeBtn]);
+    taskBtn, sortBtn, closeBtn]);
   const node = el('section', { class: 'column' + (settings.collapsedCols.includes(col.name) ? ' collapsed' + (store.get('newMailCols', []).includes(col.name) ? ' new-mail' : '') : ''), 'data-col': i }, [
     head,
-    el('div', { class: 'cards' }, ids.map((id) => renderCard(state.threads.get(id), i))),
+    el('div', { class: 'cards' }, withMailTasks(col, ids, ids.map((id) => renderCard(state.threads.get(id), i)), sort)),
   ]);
   node.append(...resizeHandles(node));
   head.title = 'Double-click to minimize or restore this column';
@@ -4588,6 +4589,7 @@ function closeTasks() {
   $('#btn-tasks').title = 'Tasks';
   $('#btn-tasks').setAttribute('aria-label', 'Tasks');
   renderUndo();
+  render();
 }
 
 function findTask(id) { return tasksData().items.find((t) => t.id === id); }
@@ -4696,7 +4698,8 @@ function renderAllColumns(list) {
   return order.map((col) => {
     const here = items.filter((t) => t.col === col);
     const node = el('section', { class: 'column task-col all-col', 'data-col': col }, [
-      el('h2', {}, [col, el('span', { class: 'count' }, String(here.length))]),
+      el('h2', {}, [col, el('span', { class: 'count' }, String(here.length)),
+        col === order[0] ? addTaskButton('Add a task', () => openTaskDialog({ project: GENERAL, col }), 'plus') : null]),
       el('div', { class: 'cards' }, here.map((t) => renderTask(t, isFinishedTask(t), projectColor(t.project, list)))),
     ]);
     node.append(...resizeHandles(node));
@@ -4872,7 +4875,7 @@ async function askRemoveTaskProject(name) {
 const TASK_COL_DRAG = 'application/x-steditask-column';
 const TASK_SORTS = [
   { key: 'mine', label: 'My order', cmp: null },
-  { key: 'due', label: 'Due date', cmp: (a, b) => (a.due || '9999').localeCompare(b.due || '9999') },
+  { key: 'due', label: 'Due date', cmp: (a, b) => (taskMoment(a) ?? Infinity) - (taskMoment(b) ?? Infinity) },
   { key: 'newest', label: 'Newest first', cmp: (a, b) => (b.added || 0) - (a.added || 0) },
   { key: 'oldest', label: 'Oldest first', cmp: (a, b) => (a.added || 0) - (b.added || 0) },
   { key: 'name', label: 'Name A–Z', cmp: (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }) },
@@ -4893,9 +4896,11 @@ function renderTaskColumn(project, col, last) {
   if (sort.key !== 'mine') sortBtn.classList.add('on');
   const remove = p.columns.length > 1 ? iconButton(`Remove column “${col}”`, null, () => removeTaskColumn(project, col), '✕') : null;
   (remove || sortBtn).classList.add('steady-aim-left');
-  const head = el('h2', {}, [col, el('span', { class: 'count' }, String(items.length)), sortBtn, remove]);
+  const first = p.columns[0] === col;
+  const plus = first ? addTaskButton(`Add a task to ${project}`, () => openTaskDialog({ project, col }), 'plus') : null;
+  const head = el('h2', {}, [col, el('span', { class: 'count' }, String(items.length)), plus, sortBtn, remove]);
   const add = el('button', { type: 'button', class: 'add-task' }, '+ Add task');
-  add.addEventListener('click', () => addTaskBox(project, col, add));
+  add.addEventListener('click', () => openTaskDialog({ project, col }));
   const collapsed = (p.collapsed || []).includes(col);
   const node = el('section', { class: 'column task-col' + (last ? ' finished-col' : '') + (collapsed ? ' collapsed' : ''), 'data-col': col },
     [head, el('div', { class: 'cards' }, items.map((t) => renderTask(t, last))), add]);
@@ -5068,7 +5073,9 @@ function renderTask(t, finished, tagColor = null) {
     'data-task': t.id, draggable: 'true', 'aria-label': `Task: ${t.title}. Open to edit` }, [
     tagColor ? el('div', { class: 'task-proj', style: `--tab:${tagColor}` }, t.project) : null,
     el('div', { class: 'task-title' }, t.title),
-    t.due ? el('div', { class: 'task-due' + (!finished && t.due < today ? ' late' : '') }, 'Due ' + dueText(t.due)) : null,
+    t.due ? el('div', { class: 'task-due' + (!finished && taskMoment(t) < Date.now() && t.due <= today ? ' late' : '') },
+      'Due ' + taskWhenText(t) + (t.alarm != null ? ' 🔔' : '')) : null,
+    t.people?.length ? el('div', { class: 'task-people' }, peopleText(t.people)) : null,
     t.notes ? el('div', { class: 'task-notes' }, t.notes) : null,
     finish,
   ]);
@@ -5083,26 +5090,6 @@ function renderTask(t, finished, tagColor = null) {
   return card;
 }
 
-function addTaskBox(project, col, addBtn) {
-  const input = el('input', { class: 'task-new', placeholder: 'New task, then Enter', 'aria-label': `New task in ${col}` });
-  addBtn.replaceWith(input);
-  input.focus();
-  const close = () => { if (input.isConnected) renderTasks(); };
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    const title = input.value.trim();
-    if (!title) { close(); return; }
-    tasksData().items.push({ id: crypto.randomUUID(), title, notes: '', due: '', project, col, added: Date.now() });
-    saveTasks(`Added “${title}”`);
-    renderTasks();
-    // Ready for the next one in the same column.
-    [...$('#tasks').querySelectorAll('.task-col')].find((n) => n.dataset.col === col)?.querySelector('.add-task')?.click();
-  });
-  input.addEventListener('blur', () => { if (!input.value.trim()) setTimeout(close); });
-}
-
 function finishTask(id, done) {
   const t = findTask(id);
   const cols = taskProject(t.project).columns;
@@ -5114,25 +5101,80 @@ function finishTask(id, done) {
   taskToast(said);
 }
 
-function editTask(id) {
-  const t = findTask(id);
-  const title = el('input', { value: t.title, 'aria-label': 'Task name' });
-  const notes = el('textarea', { rows: '4', placeholder: 'Notes', 'aria-label': 'Notes' });
+// ---------- the task dialog (Paul, 2026-11-08) ----------
+// One dialog for adding and editing a task, opened from StediTask (+ on To do, "+ Add task", a card) and from
+// the ✓ box on every mail column: what it is, an outline, people (suggested from Google contacts), a date and
+// time, and an alarm. A new task goes into its column in date order.
+const TASK_ALARMS = [[null, 'No alarm'], [0, 'At the time'], [5, '5 minutes before'], [15, '15 minutes before'],
+  [30, '30 minutes before'], [60, '1 hour before'], [1440, '1 day before']];
+const TASK_DEFAULT_TIME = '09:00';   // an alarm on a task with a date but no time
+
+// When a task is due (ms), or null without a date.
+function taskMoment(t) {
+  return t.due ? new Date(`${t.due}T${t.dueTime || '00:00'}`).getTime() : null;
+}
+
+function taskWhenText(t) {
+  if (!t.due) return '';
+  const time = t.dueTime ? ', ' + new Date(`${t.due}T${t.dueTime}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+  return dueText(t.due) + time;
+}
+
+function peopleText(people) {
+  return (people || []).map((p) => p.name || p.addr).join(', ');
+}
+
+function parsePeople(text) {
+  return text.split(',').map((x) => x.trim()).filter(Boolean).map((x) => {
+    const m = x.match(/^(.*?)\s*<([^>]+)>$/);
+    return m ? { name: m[1].replace(/^"|"$/g, ''), addr: m[2] } : { name: '', addr: x };
+  });
+}
+
+// Where a new task goes in its column: before the first task due later (tasks without a date go last).
+function insertTaskByDate(t) {
+  const items = tasksData().items;
+  const when = taskMoment(t);
+  const later = items.findIndex((x) => x.project === t.project && x.col === t.col
+    && (when == null ? false : (taskMoment(x) == null || taskMoment(x) > when)));
+  if (later < 0) items.push(t); else items.splice(later, 0, t);
+}
+
+// opts: { id } to edit, or { project, col } to add (col: the project's first column if left out).
+function openTaskDialog(opts = {}) {
+  const editing = opts.id ? findTask(opts.id) : null;
+  const t = editing || { title: '', notes: '', people: [], due: '', dueTime: '', alarm: null, start: '' };
+  const title = el('input', { value: t.title, 'aria-label': 'What is the task?', placeholder: 'What is the task?' });
+  const notes = el('textarea', { rows: '3', placeholder: 'Outline: what needs doing', 'aria-label': 'Outline' });
   notes.value = t.notes || '';
-  const due = el('input', { type: 'date', value: t.due || '', 'aria-label': 'Due date' });
+  const people = el('input', { placeholder: 'Anyone whose email goes with it', autocomplete: 'off', 'aria-label': 'People' });
+  people.value = (t.people || []).map((p) => (p.name ? `${p.name} <${p.addr}>` : p.addr)).join(', ') + ((t.people || []).length ? ', ' : '');
+  const peopleBox = el('div', {}, people);
+  const due = el('input', { type: 'date', value: t.due || '', 'aria-label': 'Date' });
+  const time = el('input', { type: 'time', value: t.dueTime || '', 'aria-label': 'Time' });
   const clearDue = el('button', { type: 'button' }, 'No date');
-  clearDue.addEventListener('click', () => { due.value = ''; });
+  clearDue.addEventListener('click', () => { due.value = ''; time.value = ''; alarm.value = ''; });
+  const alarm = el('select', { 'aria-label': 'Alarm' }, TASK_ALARMS.map(([v, label]) =>
+    el('option', { value: v == null ? '' : String(v), selected: (t.alarm ?? null) === v ? '' : null }, label)));
   const start = el('input', { type: 'date', value: t.start || '', 'aria-label': 'Start date' });
-  const clearStart = el('button', { type: 'button' }, 'No date');
-  clearStart.addEventListener('click', () => { start.value = ''; });
-  const del = el('button', { type: 'button', class: 'danger' }, 'Delete');
+  // Adding: which project (from All projects or a mail column whose project you may want to change).
+  const list = taskProjects();
+  const project = editing ? null : el('select', { 'aria-label': 'Project' }, list.map((p) =>
+    el('option', { value: p.name, selected: p.name === (opts.project || GENERAL) ? '' : null }, p.name)));
+  const del = editing ? el('button', { type: 'button', class: 'danger' }, 'Delete') : null;
   const cancel = el('button', { type: 'button' }, 'Cancel');
-  const save = el('button', { type: 'button', class: 'primary' }, 'Save');
-  const dlg = el('dialog', { class: 'ask task-edit', 'aria-label': 'Edit task' }, [
-    el('label', {}, ['Task', title]),
-    el('label', {}, ['Notes', notes]),
-    el('div', { class: 'field' }, [el('span', {}, 'Start (for the Timeline)'), el('div', { class: 'color-row' }, [start, clearStart])]),
-    el('div', { class: 'field' }, [el('span', {}, 'Due'), el('div', { class: 'color-row' }, [due, clearDue])]),
+  const save = el('button', { type: 'button', class: 'primary' }, editing ? 'Save' : 'Add task');
+  const msg = el('p', { class: 'error', role: 'alert' });
+  const dlg = el('dialog', { class: 'ask task-edit', 'aria-label': editing ? 'Edit task' : 'New task' }, [
+    el('h2', {}, editing ? 'Task' : 'New task'),
+    el('label', {}, ['What is the task?', title]),
+    el('label', {}, ['Outline', notes]),
+    el('div', { class: 'field' }, [el('span', {}, 'People'), peopleBox]),
+    el('div', { class: 'field' }, [el('span', {}, 'When'), el('div', { class: 'color-row' }, [due, time, clearDue])]),
+    el('label', {}, ['Alarm', alarm]),
+    project ? el('label', {}, ['Project', project]) : null,
+    editing ? el('div', { class: 'field' }, [el('span', {}, 'Start (for the Timeline)'), start]) : null,
+    msg,
     el('div', { class: 'ask-buttons' }, [del, el('div', { class: 'spacer' }), cancel, save]),
   ]);
   const finish = () => { dlg.close(); dlg.remove(); };
@@ -5140,26 +5182,136 @@ function editTask(id) {
   dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(); });
   title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save.click(); } });
   save.addEventListener('click', () => {
-    t.title = title.value.trim() || t.title;
-    t.notes = notes.value.trim();
-    t.due = due.value;
-    t.start = start.value;
+    const name = title.value.trim();
+    if (!name) { msg.textContent = 'Say what the task is.'; title.focus(); return; }
+    const a = alarm.value === '' ? null : Number(alarm.value);
+    if (a != null && !due.value) { msg.textContent = 'An alarm needs a date.'; due.focus(); return; }
+    const fields = { title: name, notes: notes.value.trim(), people: parsePeople(people.value), due: due.value,
+      dueTime: due.value ? time.value : '', alarm: a };
     finish();
-    saveTasks(`Edited “${t.title}”`);
-    renderTasks();
+    if (editing) {
+      Object.assign(editing, fields, { start: start.value });
+      saveTasks(`Edited “${name}”`);
+    } else {
+      const proj = project.value;
+      const d = tasksData();
+      if ((d.hidden || []).includes(proj)) d.hidden = d.hidden.filter((x) => x !== proj);   // its button comes back
+      const p = taskProject(proj);
+      const col = p.columns.includes(opts.col) ? opts.col : p.columns[0];
+      insertTaskByDate({ id: crypto.randomUUID(), ...fields, project: proj, col, added: Date.now() });
+      saveTasks(`Added “${name}”`);
+      taskToast(`Added “${name}” to ${proj}`);
+    }
+    if (a != null && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+    if (tasks.open) renderTasks(); else render();
   });
-  del.addEventListener('click', () => {
+  del?.addEventListener('click', () => {
     finish();
     const items = tasksData().items;
-    const at = items.indexOf(t);
-    items.splice(at, 1);
-    saveTasks(`Deleted: ${t.title}`);
-    renderTasks();
-    taskToast(`Deleted: ${t.title}`);
+    items.splice(items.indexOf(editing), 1);
+    saveTasks(`Deleted: ${editing.title}`);
+    if (tasks.open) renderTasks(); else render();
+    taskToast(`Deleted: ${editing.title}`);
   });
   document.body.append(dlg);
+  attachContactSuggest(people);
   dlg.showModal();
   title.focus();
+}
+const editTask = (id) => openTaskDialog({ id });
+
+// The ✓ box in a column's title bar, and StediTask's + on To do.
+function addTaskButton(label, onClick, cls = '') {
+  const b = el('button', { type: 'button', class: 'add-task-btn ' + cls, title: label, 'aria-label': label, draggable: 'false' });
+  b.innerHTML = cls.includes('plus')
+    ? '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'
+    : '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12.5l3 3 5.5-6"/></svg>';
+  b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+  b.addEventListener('dblclick', (e) => e.stopPropagation());
+  return b;
+}
+
+// ---------- tasks shown in the mail columns (Paul, 2026-11-08) ----------
+// Each mail column shows its project's open tasks as light red cards, in date order among the emails;
+// the Inbox shows General's. Click one to open it.
+function mailColumnTasks(col) {
+  const d = tasks.data || store.get('tasks', null) ? tasksData() : null;
+  if (!d) return [];
+  const name = col.inbox ? GENERAL : col.name;
+  if ((d.hidden || []).includes(name)) return [];
+  return d.items.filter((t) => t.project === name && !isFinishedTask(t));
+}
+
+function renderMailTaskCard(t) {
+  const late = t.due && taskMoment(t) < Date.now();
+  const card = el('article', { class: 'card task-in-mail', tabindex: '0', role: 'button', 'data-task': t.id,
+    'aria-label': `Task: ${t.title}${t.due ? ', due ' + taskWhenText(t) : ''}. Open it` }, [
+    el('div', { class: 'top' }, [el('span', { class: 'task-flag' }, 'Task'), t.alarm != null ? el('span', { class: 'task-bell', title: 'Alarm set' }, '🔔') : null,
+      t.due ? el('time', { class: late ? 'late' : '' }, taskWhenText(t)) : null]),
+    el('div', { class: 'task-title' }, t.title),
+    t.people?.length ? el('div', { class: 'task-people' }, peopleText(t.people)) : null,
+  ]);
+  card.addEventListener('click', () => openTaskDialog({ id: t.id }));
+  card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) openTaskDialog({ id: t.id }); });
+  return card;
+}
+
+// Email cards and task cards together: by date when the column sorts by date, tasks first otherwise.
+function withMailTasks(col, ids, nodes, sort) {
+  const list = mailColumnTasks(col);
+  if (!list.length) return nodes;
+  const rows = ids.map((id, k) => ({ time: sortTime(state.threads.get(id)), node: nodes[k] }));
+  for (const t of list.sort((a, b) => (taskMoment(a) ?? t0(a)) - (taskMoment(b) ?? t0(b)))) {
+    const time = taskMoment(t) ?? t0(t);
+    let at = 0;
+    if (sort.key === 'newest') at = rows.findIndex((r) => r.time < time);
+    else if (sort.key === 'oldest') at = rows.findIndex((r) => r.time > time);
+    rows.splice(at < 0 ? rows.length : at, 0, { time, node: renderMailTaskCard(t) });
+  }
+  return rows.map((r) => r.node);
+}
+const t0 = (t) => t.added || 0;
+
+// ---------- alarms (Paul, 2026-11-08) ----------
+// Checked while StediMail is open; one missed while it was closed goes off when it opens. Each alarm goes off
+// once (changing the date, time or alarm sets it again).
+const TASK_ALARM_MS = 20 * 1000;
+
+function checkTaskAlarms() {
+  if (!tasks.data && !store.get('tasks', null)) return;
+  const now = Date.now();
+  for (const t of tasksData().items) {
+    if (t.alarm == null || !t.due || isFinishedTask(t)) continue;
+    const at = new Date(`${t.due}T${t.dueTime || TASK_DEFAULT_TIME}`).getTime() - t.alarm * 60000;
+    const key = `${t.due}|${t.dueTime}|${t.alarm}`;
+    if (now < at || t.alarmFired === key) continue;
+    t.alarmFired = key;
+    saveTasks(null);
+    soundTaskAlarm(t);
+  }
+}
+
+function soundTaskAlarm(t) {
+  const when = taskWhenText(t);
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const n = new Notification('StediTask alarm', { body: `${t.title}${when ? ' — ' + when : ''}`, tag: 'steditask-' + t.id, requireInteraction: true });
+      n.onclick = () => { window.focus(); openTaskDialog({ id: t.id }); n.close(); };
+    }
+  } catch {}
+  try {   // three short beeps
+    const ctx = new AudioContext();
+    for (let i = 0; i < 3; i++) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.25, ctx.currentTime + i * 0.35);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.35 + 0.25);
+      o.connect(g).connect(ctx.destination);
+      o.start(ctx.currentTime + i * 0.35);
+      o.stop(ctx.currentTime + i * 0.35 + 0.3);
+    }
+  } catch {}
+  toast(`⏰ ${t.title}${when ? ' — ' + when : ''}`, { label: 'Open', run: () => openTaskDialog({ id: t.id }) });
 }
 
 function onKey(e) {
@@ -5440,6 +5592,8 @@ function wireUi() {
   setInterval(() => { if (document.visibilityState === 'visible') loadBoard(); }, REFRESH_MS);
   setInterval(watchMailbox, WATCH_MS);
   setInterval(linkStediTask, STEDITASK_MS);
+  setInterval(checkTaskAlarms, TASK_ALARM_MS);
+  setTimeout(checkTaskAlarms, 3000);
   linkStediTask();
 }
 
