@@ -636,6 +636,8 @@ body:not(.tasks-on) #tasks, body:not(.tasks-on) #tasks-note { display: none !imp
 body.tasks-on #board, body.tasks-on #sidebar, body.tasks-on #bulk,
 body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picker, body.tasks-on #btn-menu { display: none !important; }
 .tasks-note { gap: 1rem; }
+/* In StediTask the button shows an envelope: click it to go back to StediMail (Paul, 2026-11-08) */
+body:not(.tasks-on) #btn-tasks .back-mail, body.tasks-on #btn-tasks .to-tasks { display: none; }
 /* With the tasks on, the bar says StediTask (Paul, 2026-11-08) */
 body:not(.tasks-on) .bar h1 .task-logo, body.tasks-on .bar h1 .mail-logo { display: none; }
 /* Project buttons on top, like the StediTask window; the chosen project's columns below */
@@ -651,7 +653,6 @@ body:not(.tasks-on) .bar h1 .task-logo, body.tasks-on .bar h1 .mail-logo { displ
 .task-tab-input { min-height: 46px; min-width: 240px; margin-left: .8rem; }
 .task-cols { flex: 1; min-height: 0; display: flex; gap: 1rem; overflow-x: auto; }
 .task-empty { padding: 1rem 0; }
-.task-col h2 .col-name { background: transparent; border: 0; padding: 0; font: inherit; color: inherit; cursor: text; text-align: left; }
 .task-col h2 input { font: inherit; min-width: 0; flex: 1; }
 .task-col .cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; padding: 0 .6rem .4rem; }
 .card.task { padding-right: 3.6rem; min-height: 52px; }

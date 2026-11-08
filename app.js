@@ -4493,7 +4493,8 @@ function openTasks() {
   tasks.open = true;
   document.body.classList.add('tasks-on');
   $('#btn-tasks').setAttribute('aria-pressed', 'true');
-  $('#btn-tasks').title = 'Back to mail';
+  $('#btn-tasks').title = 'Back to StediMail';
+  $('#btn-tasks').setAttribute('aria-label', 'Back to StediMail');
   if (!$('#reader').hidden) closeReader();
   renderTasks();
   if (!tasks.synced) pullTasks();
@@ -4504,6 +4505,7 @@ function closeTasks() {
   document.body.classList.remove('tasks-on');
   $('#btn-tasks').setAttribute('aria-pressed', 'false');
   $('#btn-tasks').title = 'Tasks';
+  $('#btn-tasks').setAttribute('aria-label', 'Tasks');
 }
 
 function findTask(id) { return tasksData().items.find((t) => t.id === id); }
@@ -4620,39 +4622,118 @@ async function removeTaskProject(name) {
   toast(`Removed project “${name}”`, { label: 'Undo', run: () => { tasks.data = before; saveTasks(); if (tasks.open) renderTasks(); } });
 }
 
+// Task columns work like mail columns (Paul, 2026-11-08): count, sort menu (with Rename), ✕, drag the header to
+// move it, double-click to minimize, drag a top corner to resize. The last column (finished) stays last.
+const TASK_COL_DRAG = 'application/x-steditask-column';
+const TASK_SORTS = [
+  { key: 'mine', label: 'My order', cmp: null },
+  { key: 'due', label: 'Due date', cmp: (a, b) => (a.due || '9999').localeCompare(b.due || '9999') },
+  { key: 'newest', label: 'Newest first', cmp: (a, b) => (b.added || 0) - (a.added || 0) },
+  { key: 'oldest', label: 'Oldest first', cmp: (a, b) => (a.added || 0) - (b.added || 0) },
+  { key: 'name', label: 'Name A–Z', cmp: (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }) },
+];
+const taskSortOf = (p, col) => TASK_SORTS.find((x) => x.key === p.sorts?.[col]) || TASK_SORTS[0];
+
 function renderTaskColumn(project, col, last) {
   const p = taskProject(project);
-  const items = tasksData().items.filter((t) => t.project === project && t.col === col);
-  const name = el('button', { type: 'button', class: 'col-name', title: 'Rename this column' }, col);
-  name.addEventListener('click', () => renameColumnBox(project, col, name));
+  const sort = taskSortOf(p, col);
+  let items = tasksData().items.filter((t) => t.project === project && t.col === col);
+  if (sort.cmp) items = [...items].sort(sort.cmp);
+  const sortBtn = iconButton(`Sort: ${sort.label}`, 'sort', (b) => openMenu(b, [
+    { heading: 'Sort' },
+    ...TASK_SORTS.map((x) => ({ label: x.label, checked: x.key === sort.key, run: () => { p.sorts = { ...p.sorts, [col]: x.key }; saveTasks(); renderTasks(); } })),
+    { sep: true },
+    { label: 'Rename column', run: () => renameColumnBox(project, col) },
+  ]));
+  if (sort.key !== 'mine') sortBtn.classList.add('on');
   const remove = p.columns.length > 1 ? iconButton(`Remove column “${col}”`, null, () => removeTaskColumn(project, col), '✕') : null;
-  const head = el('h2', {}, [name, el('span', { class: 'count' }, String(items.length)), remove]);
+  (remove || sortBtn).classList.add('steady-aim-left');
+  const head = el('h2', {}, [col, el('span', { class: 'count' }, String(items.length)), sortBtn, remove]);
   const add = el('button', { type: 'button', class: 'add-task' }, '+ Add task');
   add.addEventListener('click', () => addTaskBox(project, col, add));
-  const node = el('section', { class: 'column task-col' + (last ? ' finished-col' : ''), 'data-col': col },
+  const collapsed = (p.collapsed || []).includes(col);
+  const node = el('section', { class: 'column task-col' + (last ? ' finished-col' : '') + (collapsed ? ' collapsed' : ''), 'data-col': col },
     [head, el('div', { class: 'cards' }, items.map((t) => renderTask(t, last))), add]);
+  node.append(...resizeHandles(node));
+  head.title = 'Double-click to minimize or restore this column';
+  head.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button, input') || matchMedia('(max-width: 640px)').matches) return;
+    toggleTaskCollapsed(p, col, node);
+  });
+  if (!last) {
+    head.draggable = true;
+    head.classList.add('grab');
+    head.title = 'Drag to move this column · double-click to minimize or restore it';
+    head.addEventListener('dragstart', (e) => {
+      if (e.target !== head) return;
+      e.dataTransfer.setData(TASK_COL_DRAG, col);
+      e.dataTransfer.effectAllowed = 'move';
+      columnGhost.start(node, e);
+      node.classList.add('dragging-col');
+    });
+    head.addEventListener('dragend', () => node.classList.remove('dragging-col'));
+  }
+  const clearMarks = () => node.classList.remove('drop', 'insert-before', 'insert-after');
   node.addEventListener('dragover', (e) => {
+    if (e.dataTransfer.types.includes(TASK_COL_DRAG)) {
+      e.preventDefault();
+      const r = node.getBoundingClientRect();
+      const after = !last && e.clientX > r.left + r.width / 2;   // nothing goes after the last column
+      node.classList.toggle('insert-after', after);
+      node.classList.toggle('insert-before', !after);
+      return;
+    }
     if (!e.dataTransfer.types.includes(TASK_DRAG)) return;
     e.preventDefault();
     node.classList.add('drop');
   });
-  node.addEventListener('dragleave', (e) => { if (!node.contains(e.relatedTarget)) node.classList.remove('drop'); });
+  node.addEventListener('dragleave', (e) => { if (!node.contains(e.relatedTarget)) clearMarks(); });
   node.addEventListener('drop', (e) => {
+    const after = node.classList.contains('insert-after');
+    clearMarks();
+    const moving = e.dataTransfer.getData(TASK_COL_DRAG);
+    if (moving) {
+      e.preventDefault();
+      if (moving !== col) moveTaskColumn(p, moving, col, after);
+      return;
+    }
     const id = e.dataTransfer.getData(TASK_DRAG);
     if (!id) return;
     e.preventDefault();
-    node.classList.remove('drop');
-    const over = e.target.closest('.card.task');
+    const over = sort.cmp ? null : e.target.closest('.card.task');   // a sorted column has no "my order" to drop into
     const before = over && e.clientY < over.getBoundingClientRect().top + over.offsetHeight / 2;
     moveTask(id, col, over?.dataset.task, before);
   });
   return node;
 }
 
-function renameColumnBox(project, col, nameBtn) {
+function moveTaskColumn(p, from, to, after) {
+  const list = p.columns.filter((c) => c !== from);
+  list.splice(list.indexOf(to) + (after ? 1 : 0), 0, from);
+  if (list[list.length - 1] !== p.columns[p.columns.length - 1]) return;   // the finished column stays last
+  p.columns = list;
+  saveTasks();
+  renderTasks();
+}
+
+function toggleTaskCollapsed(p, col, node) {
+  const on = !(p.collapsed || []).includes(col);
+  p.collapsed = on ? [...(p.collapsed || []), col] : p.collapsed.filter((c) => c !== col);
+  saveTasks();
+  const from = node.offsetWidth;
+  node.classList.toggle('collapsed', on);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const frame = (width) => ({ flex: `0 0 ${width}px`, width: `${width}px`, minWidth: '0', maxWidth: 'none', overflow: 'hidden' });
+  node.animate([frame(from), frame(node.offsetWidth)], { duration: 200, easing: 'ease-out' });
+}
+
+function renameColumnBox(project, col) {
   const p = taskProject(project);
+  const head = [...$('#tasks').querySelectorAll('.task-col')].find((n) => n.dataset.col === col)?.querySelector('h2');
+  if (!head) return;
   const input = el('input', { value: col, 'aria-label': `Rename column ${col}` });
-  nameBtn.replaceWith(input);
+  head.draggable = false;
+  head.replaceChildren(input);
   input.focus();
   input.select();
   let done = false;
@@ -4665,6 +4746,8 @@ function renameColumnBox(project, col, nameBtn) {
       else {
         p.columns[p.columns.indexOf(col)] = to;
         for (const t of tasksData().items) if (t.project === project && t.col === col) t.col = to;
+        for (const key of ['sorts']) if (p[key]?.[col]) { p[key][to] = p[key][col]; delete p[key][col]; }
+        if (p.collapsed?.includes(col)) p.collapsed = p.collapsed.map((c) => (c === col ? to : c));
         saveTasks();
       }
     }
@@ -4766,7 +4849,7 @@ function addTaskBox(project, col, addBtn) {
     e.preventDefault();
     const title = input.value.trim();
     if (!title) { close(); return; }
-    tasksData().items.push({ id: crypto.randomUUID(), title, notes: '', due: '', project, col });
+    tasksData().items.push({ id: crypto.randomUUID(), title, notes: '', due: '', project, col, added: Date.now() });
     saveTasks();
     renderTasks();
     // Ready for the next one in the same column.
