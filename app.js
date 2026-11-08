@@ -1493,11 +1493,11 @@ function openReport() {
 // or repeated Enter/Space (a shaky key press, a voice-typing key) says yes before it's read. Here Cancel
 // has the focus, the OK button only works after ARM_MS, and Esc or a click outside cancels.
 const ARM_MS = 900;
-function askConfirm(message, okLabel = 'OK') {
+function askConfirm(message, okLabel = 'OK', { cancelLabel = 'Cancel', danger = true } = {}) {
   return new Promise((resolve) => {
     const dlg = el('dialog', { class: 'ask', 'aria-label': 'Please confirm' });
-    const cancel = el('button', { type: 'button' }, 'Cancel');
-    const ok = el('button', { type: 'button', class: 'danger', disabled: '' }, okLabel);
+    const cancel = el('button', { type: 'button' }, cancelLabel);
+    const ok = el('button', { type: 'button', class: danger ? 'danger' : 'primary', disabled: '' }, okLabel);
     const parts = String(message).split('\n\n');
     dlg.append(...parts.map((p, i) => el('p', { class: i ? 'hint' : '' }, p)), el('div', { class: 'ask-buttons' }, [cancel, ok]));
     let done = false;
@@ -2073,16 +2073,19 @@ function splitForEmail(current, picked) {
 
 // Its own sign-in, asked for the first time it's needed, so nobody else ever sees a Drive permission
 // and the Gmail sign-in is left alone.
-function driveSignIn() {
+function driveSignIn() { return scopedSignIn(driveAuth, DRIVE_SCOPE); }
+
+// A token for one extra Google permission, asked for the first time it's needed (Gmail sign-in untouched).
+function scopedSignIn(driveAuth, scope) {
   if (driveAuth.token && Date.now() < driveAuth.exp) return Promise.resolve(driveAuth.token);
   if (driveAuth.pending) return driveAuth.pending;
   driveAuth.pending = new Promise((resolve, reject) => {
     google.accounts.oauth2.initTokenClient({
       client_id: settings.clientId,
-      scope: DRIVE_SCOPE,
+      scope,
       include_granted_scopes: false,
       callback: (resp) => {
-        if (resp.error || !google.accounts.oauth2.hasGrantedAllScopes(resp, DRIVE_SCOPE)) {
+        if (resp.error || !google.accounts.oauth2.hasGrantedAllScopes(resp, scope)) {
           reject(new Error('Google Drive permission wasn\'t given'));
           return;
         }
@@ -2440,7 +2443,7 @@ function show(view) {
   $('#main-row').hidden = view !== 'board';
   $('#signin').hidden = view !== 'signin';
   $('#setup').hidden = view !== 'setup';
-  for (const id of ['btn-undo', 'btn-downloads', 'btn-compose', 'btn-refresh', 'search-form', 'btn-menu', 'col-picker', 'btn-report']) $('#' + id).hidden = view !== 'board';
+  for (const id of ['btn-undo', 'btn-downloads', 'btn-compose', 'btn-refresh', 'search-form', 'btn-menu', 'col-picker', 'btn-report', 'btn-tasks']) $('#' + id).hidden = view !== 'board';
   $('#sidebar').hidden = !state.sidebarOpen;
   if (view === 'board') renderSidebar();
 }
@@ -2459,6 +2462,7 @@ function render() {
   if (focusedId) board.querySelector(`.card[data-id="${focusedId}"]`)?.focus({ preventScroll: true });
   renderBulk();
   showPhoneColumn();
+  if (tasks.open) renderTasks();   // mail columns may have changed
 }
 
 // Phones show one column at a time, chosen with the full-width "Columns" button under the search box.
@@ -4298,6 +4302,7 @@ async function applySettings({ inboxName, cols, clientId }) {
     if (!c.orig || c.orig === c.name) continue;
     try {
       await renameLabel(c.orig, c.name);
+      renameTaskColumn(c.orig, c.name);
     } catch (e) {
       if (!(e instanceof AuthError)) toast(`Could not rename “${c.orig}”: ${e.message}`);
       c.name = c.orig;
@@ -4324,6 +4329,357 @@ function disarmDelete() {
   card?.classList.remove('delete-armed');
   card?.querySelector('.delete-hint')?.remove();
   state.armedDelete = null;
+}
+
+// ---------- tasks (StediTask inside StediMail) ----------
+// A task board next to the mail, opened with the checklist button. Its columns are the projects, and every
+// project is a mail column: one made in either place shows in both, and renames follow. A project whose mail
+// column is removed while it still has tasks stays here as a task-only column, so nothing is lost. Saved as one file in the hidden app folder
+// of the person's Google Drive (drive.appdata: StediMail can't see their other files), so it follows them to
+// other computers; the browser keeps a copy for opening fast.
+const TASKS_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const TASKS_FILE = 'steditask.json';
+const TASKS_SAVE_MS = 800;
+const TASK_DRAG = 'application/x-steditask';
+const tasksAuth = { token: null, exp: 0, pending: null };
+const tasks = {
+  open: false,
+  data: null,         // { columns: [task-only column names], items: [{ id, title, notes, due, col, done, doneAt }] }
+  showDone: new Set(), // columns whose finished tasks are shown
+  saveTimer: null,
+  synced: false,       // read from Google this session
+};
+
+function tasksData() {
+  if (!tasks.data) tasks.data = store.get('tasks', null) || { columns: [], items: [] };
+  return tasks.data;
+}
+
+function taskColumns() {
+  const d = tasksData();
+  const mail = columns().map((c) => c.name);
+  const own = d.columns.filter((n) => !mail.includes(n));
+  for (const t of d.items) if (!mail.includes(t.col) && !own.includes(t.col)) own.push(t.col);
+  d.columns = own;
+  return [...mail.map((name) => ({ name, mail: true })), ...own.map((name) => ({ name }))];
+}
+
+function tasksSignIn() { return scopedSignIn(tasksAuth, TASKS_SCOPE); }
+
+async function tasksFetch(url, opts = {}) {
+  const token = await tasksSignIn();
+  const res = await fetch(url, { ...opts, headers: { ...opts.headers, Authorization: 'Bearer ' + token } });
+  if (!res.ok) throw await driveError(res);
+  return res;
+}
+
+async function tasksFileId() {
+  const id = store.get('tasksFileId', null);
+  if (id) return id;
+  const q = encodeURIComponent(`name='${TASKS_FILE}'`);
+  const { files = [] } = await (await tasksFetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id)`)).json();
+  if (files[0]) store.set('tasksFileId', files[0].id);
+  return files[0]?.id || null;
+}
+
+// Changes made here and not yet saved to Google win; otherwise Google's copy (maybe from another computer) wins.
+async function pullTasks() {
+  try {
+    const id = await tasksFileId();
+    if (store.get('tasksDirty', false) || !id) {
+      if (id || tasksData().items.length || tasksData().columns.length) await pushTasks();
+    } else {
+      const remote = await (await tasksFetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`)).json();
+      tasks.data = { columns: remote.columns || [], items: remote.items || [] };
+      store.set('tasks', tasks.data);
+    }
+    tasks.synced = true;
+    $('#tasks-note').hidden = true;
+    if (tasks.open && !$('#tasks').contains(document.activeElement)) renderTasks();
+  } catch (e) {
+    if (/not found/i.test(e.message) && store.get('tasksFileId', null)) { store.set('tasksFileId', null); return pullTasks(); }
+    tasksOffline(e.message);
+  }
+}
+
+async function pushTasks() {
+  clearTimeout(tasks.saveTimer);
+  const body = JSON.stringify(tasksData());
+  let id = await tasksFileId();
+  if (id) {
+    await tasksFetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
+  } else {
+    const form = new FormData();
+    form.append('meta', new Blob([JSON.stringify({ name: TASKS_FILE, parents: ['appDataFolder'] })], { type: 'application/json' }));
+    form.append('file', new Blob([body], { type: 'application/json' }));
+    id = (await (await tasksFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+      { method: 'POST', body: form })).json()).id;
+    store.set('tasksFileId', id);
+  }
+  if (JSON.stringify(tasksData()) === body) store.set('tasksDirty', false);
+}
+
+function tasksOffline(why) {
+  const note = $('#tasks-note');
+  note.replaceChildren(el('span', {}, `Tasks are saved on this computer only (${why}).`));
+  const b = el('button', { type: 'button' }, 'Save to Google');
+  b.addEventListener('click', () => { tasksAuth.token = null; pullTasks(); });
+  note.append(b);
+  note.hidden = false;
+}
+
+// Called from clicks, so a Google window for the permission isn't blocked; the upload waits a moment so
+// quick changes go up together.
+function saveTasks() {
+  store.set('tasks', tasksData());
+  store.set('tasksDirty', true);
+  if (!tasks.synced) return;   // pullTasks() sends it once connected
+  const ready = Date.now() < tasksAuth.exp ? Promise.resolve() : tasksSignIn();
+  ready.then(() => {
+    clearTimeout(tasks.saveTimer);
+    tasks.saveTimer = setTimeout(() => pushTasks().catch((e) => tasksOffline(e.message)), TASKS_SAVE_MS);
+  }, (e) => tasksOffline(e.message));
+}
+
+function openTasks() {
+  tasks.open = true;
+  document.body.classList.add('tasks-on');
+  $('#btn-tasks').setAttribute('aria-pressed', 'true');
+  $('#btn-tasks').title = 'Back to mail';
+  if (!$('#reader').hidden) closeReader();
+  renderTasks();
+  if (!tasks.synced) pullTasks();
+}
+
+function closeTasks() {
+  tasks.open = false;
+  document.body.classList.remove('tasks-on');
+  $('#btn-tasks').setAttribute('aria-pressed', 'false');
+  $('#btn-tasks').title = 'Tasks';
+}
+
+function renameTaskColumn(from, to) {
+  const d = tasksData();
+  let changed = false;
+  for (const t of d.items) if (t.col === from) { t.col = to; changed = true; }
+  if (changed) saveTasks();
+}
+
+function findTask(id) { return tasksData().items.find((t) => t.id === id); }
+
+function renderTasks() {
+  const box = $('#tasks');
+  const scrolls = [...box.querySelectorAll('.cards')].map((c) => c.scrollTop);
+  box.replaceChildren(...taskColumns().map(renderTaskColumn), renderAddTaskColumn());
+  box.querySelectorAll('.cards').forEach((c, i) => { c.scrollTop = scrolls[i] || 0; });
+}
+
+function renderTaskColumn(col) {
+  const items = tasksData().items.filter((t) => t.col === col.name);
+  const open = items.filter((t) => !t.done);
+  const done = items.filter((t) => t.done);
+  const remove = col.mail ? null : iconButton(`Remove column “${col.name}”`, null, () => removeTaskColumn(col.name), '✕');
+  const head = el('h2', {}, [col.name, el('span', { class: 'count' }, String(open.length)), remove]);
+  head.title = col.mail ? 'Also a mail column: rename or remove it in Settings' : 'Its mail column was removed; tasks only now';
+  const add = el('button', { type: 'button', class: 'add-task' }, '+ Add task');
+  add.addEventListener('click', () => addTaskBox(col.name, add));
+  const parts = [head, el('div', { class: 'cards' }, open.map(renderTask)), add];
+  if (done.length) {
+    const showing = tasks.showDone.has(col.name);
+    const toggle = el('button', { type: 'button', class: 'show-done', 'aria-expanded': String(showing) },
+      `${showing ? '▾' : '▸'} ${done.length} finished`);
+    toggle.addEventListener('click', () => {
+      tasks.showDone[showing ? 'delete' : 'add'](col.name);
+      renderTasks();
+    });
+    parts.push(toggle);
+    if (showing) parts.push(el('div', { class: 'cards done-cards' }, done.map(renderTask)));
+  }
+  const node = el('section', { class: 'column task-col' + (col.mail ? ' mail-col' : '') }, parts);
+  node.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer.types.includes(TASK_DRAG)) return;
+    e.preventDefault();
+    node.classList.add('drop');
+  });
+  node.addEventListener('dragleave', (e) => { if (!node.contains(e.relatedTarget)) node.classList.remove('drop'); });
+  node.addEventListener('drop', (e) => {
+    const id = e.dataTransfer.getData(TASK_DRAG);
+    if (!id) return;
+    e.preventDefault();
+    node.classList.remove('drop');
+    const over = e.target.closest('.card.task:not(.finished)');
+    const before = over && e.clientY < over.getBoundingClientRect().top + over.offsetHeight / 2;
+    moveTask(id, col.name, over?.dataset.task, before);
+  });
+  return node;
+}
+
+function moveTask(id, col, nextTo, before) {
+  if (id === nextTo) return;
+  const items = tasksData().items;
+  const t = findTask(id);
+  items.splice(items.indexOf(t), 1);
+  t.col = col;
+  const at = nextTo ? items.indexOf(findTask(nextTo)) + (before ? 0 : 1) : items.length;
+  items.splice(at, 0, t);
+  saveTasks();
+  renderTasks();
+}
+
+function dueText(due) {
+  return new Date(due + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function renderTask(t) {
+  const today = new Date().toLocaleDateString('en-CA');
+  const finishLabel = t.done ? `Put back: ${t.title}` : `Mark finished: ${t.title}`;
+  const finish = el('button', { type: 'button', class: 'task-finish', title: t.done ? 'Not finished: put it back' : 'Mark finished',
+    'aria-label': finishLabel }, t.done ? '↺' : '✓');
+  finish.addEventListener('click', (e) => { e.stopPropagation(); setTaskDone(t.id, !t.done); });
+  const card = el('div', { class: 'card task' + (t.done ? ' finished' : ''), tabindex: '0', role: 'button',
+    'data-task': t.id, draggable: t.done ? null : 'true', 'aria-label': `Task: ${t.title}. Open to edit` }, [
+    el('div', { class: 'task-title' }, t.title),
+    t.due ? el('div', { class: 'task-due' + (!t.done && t.due < today ? ' late' : '') }, 'Due ' + dueText(t.due)) : null,
+    t.notes ? el('div', { class: 'task-notes' }, t.notes) : null,
+    finish,
+  ]);
+  card.addEventListener('click', () => editTask(t.id));
+  card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) editTask(t.id); });
+  card.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData(TASK_DRAG, t.id);
+    e.dataTransfer.effectAllowed = 'move';
+    card.classList.add('dragging');
+  });
+  card.addEventListener('dragend', () => card.classList.remove('dragging'));
+  return card;
+}
+
+function addTaskBox(col, addBtn) {
+  const input = el('input', { class: 'task-new', placeholder: 'New task, then Enter', 'aria-label': `New task in ${col}` });
+  addBtn.replaceWith(input);
+  input.focus();
+  const close = () => { if (input.isConnected) renderTasks(); };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const title = input.value.trim();
+    if (!title) { close(); return; }
+    tasksData().items.push({ id: crypto.randomUUID(), title, notes: '', due: '', col, done: false });
+    saveTasks();
+    renderTasks();
+    // Ready for the next one in the same column.
+    const again = [...$('#tasks').querySelectorAll('.task-col')].find((n) => n.querySelector('h2').firstChild.textContent === col);
+    again?.querySelector('.add-task')?.click();
+  });
+  input.addEventListener('blur', () => { if (!input.value.trim()) setTimeout(close); });
+}
+
+function setTaskDone(id, done) {
+  const t = findTask(id);
+  t.done = done;
+  t.doneAt = done ? Date.now() : null;
+  saveTasks();
+  renderTasks();
+  toast(done ? `Finished: ${t.title}` : `Put back: ${t.title}`, { label: 'Undo', run: () => {
+    t.done = !done;
+    t.doneAt = !done ? Date.now() : null;
+    saveTasks();
+    if (tasks.open) renderTasks();
+  } });
+}
+
+function editTask(id) {
+  const t = findTask(id);
+  const title = el('input', { value: t.title, 'aria-label': 'Task name' });
+  const notes = el('textarea', { rows: '4', placeholder: 'Notes', 'aria-label': 'Notes' });
+  notes.value = t.notes || '';
+  const due = el('input', { type: 'date', value: t.due || '', 'aria-label': 'Due date' });
+  const clearDue = el('button', { type: 'button' }, 'No date');
+  clearDue.addEventListener('click', () => { due.value = ''; });
+  const del = el('button', { type: 'button', class: 'danger' }, 'Delete');
+  const cancel = el('button', { type: 'button' }, 'Cancel');
+  const save = el('button', { type: 'button', class: 'primary' }, 'Save');
+  const dlg = el('dialog', { class: 'ask task-edit', 'aria-label': 'Edit task' }, [
+    el('label', {}, ['Task', title]),
+    el('label', {}, ['Notes', notes]),
+    el('div', { class: 'field' }, [el('span', {}, 'Due'), el('div', { class: 'color-row' }, [due, clearDue])]),
+    el('div', { class: 'ask-buttons' }, [del, el('div', { class: 'spacer' }), cancel, save]),
+  ]);
+  const finish = () => { dlg.close(); dlg.remove(); };
+  cancel.addEventListener('click', finish);
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(); });
+  title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save.click(); } });
+  save.addEventListener('click', () => {
+    t.title = title.value.trim() || t.title;
+    t.notes = notes.value.trim();
+    t.due = due.value;
+    finish();
+    saveTasks();
+    renderTasks();
+  });
+  del.addEventListener('click', () => {
+    finish();
+    const items = tasksData().items;
+    const at = items.indexOf(t);
+    items.splice(at, 1);
+    saveTasks();
+    renderTasks();
+    toast(`Deleted: ${t.title}`, { label: 'Undo', run: () => {
+      items.splice(at, 0, t);
+      saveTasks();
+      if (tasks.open) renderTasks();
+    } });
+  });
+  document.body.append(dlg);
+  dlg.showModal();
+  title.focus();
+}
+
+function renderAddTaskColumn() {
+  const add = el('button', { type: 'button', class: 'add-task' }, '+ Add project');
+  const node = el('section', { class: 'add-task-col' }, [add]);
+  add.addEventListener('click', () => {
+    const input = el('input', { placeholder: 'Project name, then Enter', 'aria-label': 'New project name (also a mail column)' });
+    add.replaceWith(input);
+    input.focus();
+    input.addEventListener('keydown', async (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); renderTasks(); return; }
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const name = input.value.trim().replace(/\//g, '-');
+      if (!name) { renderTasks(); return; }
+      if (taskColumns().some((c) => c.name.toLowerCase() === name.toLowerCase())) { toast(`There's already a “${name}” project.`); return; }
+      input.disabled = true;   // its blur would otherwise redraw the board under the question
+      const mail = await askConfirm(`Also make a “${name}” column in StediMail?\n\nIts emails would sit next to its tasks. With No, the project is on the task board only.`,
+        'Yes, make a column', { cancelLabel: 'No, tasks only', danger: false });
+      if (mail) addColumn(name);   // the mail column; the task board redraws with it
+      if (!taskColumns().some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+        tasksData().columns.push(name);   // No, or the mail column couldn't be made (nine at most)
+        saveTasks();
+      }
+      renderTasks();
+    });
+    input.addEventListener('blur', () => { if (!input.value.trim()) setTimeout(() => { if (input.isConnected) renderTasks(); }); });
+  });
+  return node;
+}
+
+async function removeTaskColumn(name) {
+  const d = tasksData();
+  const inIt = d.items.filter((t) => t.col === name);
+  if (inIt.length && !await askConfirm(`Remove the “${name}” column and its ${inIt.length} task${inIt.length > 1 ? 's' : ''}?`, 'Remove')) return;
+  const before = { columns: [...d.columns], items: [...d.items] };
+  d.columns = d.columns.filter((n) => n !== name);
+  d.items = d.items.filter((t) => t.col !== name);
+  saveTasks();
+  renderTasks();
+  toast(`Removed column “${name}”`, { label: 'Undo', run: () => {
+    tasks.data = before;
+    saveTasks();
+    if (tasks.open) renderTasks();
+  } });
 }
 
 function onKey(e) {
@@ -4544,6 +4900,7 @@ function wireUi() {
   // The browser's built-in ✕ in the search box empties it without submitting.
   $('#search').addEventListener('search', () => { if (!$('#search').value) clearSearch(); });
   $('#btn-settings').addEventListener('click', openSettings);
+  $('#btn-tasks').addEventListener('click', () => (tasks.open ? closeTasks() : openTasks()));
   $('#settings form').addEventListener('submit', (e) => {
     if (e.submitter?.value !== 'save') return;
     const result = readSettingsForm();

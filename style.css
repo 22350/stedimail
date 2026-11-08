@@ -56,9 +56,9 @@ a { color: var(--accent); }
 .status { color: var(--muted); font-size: .9rem; }
 .search-box { flex: 0 1 360px; min-width: 0; }
 /* Refresh: a square arrow just left of the search box (Paul, 2026-11-03); Settings: square gear (2026-11-08) */
-.bar #btn-refresh, .bar #btn-downloads, .bar #btn-settings { width: 38px; height: 38px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+.bar #btn-refresh, .bar #btn-downloads, .bar #btn-settings, .bar #btn-tasks { width: 38px; height: 38px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
   font-size: 1.35rem; line-height: 1; border-radius: 8px; flex: 0 0 auto; }
-.bar #btn-refresh[hidden], .bar #btn-downloads[hidden] { display: none; }
+.bar #btn-refresh[hidden], .bar #btn-downloads[hidden], .bar #btn-tasks[hidden] { display: none; }
 /* Same red as Unsubscribe */
 .bar #btn-downloads.unseen { background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); }
 .bar #btn-downloads.unseen:hover { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
@@ -628,3 +628,44 @@ dialog.report pre { white-space: pre-wrap; font-size: 12px; max-height: 180px; o
   background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); color: inherit; }
 .unsub .unsub-btn:hover:not(:disabled) { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
 .unsub .hint { margin: 0; font-size: .63rem; }
+
+/* Tasks: StediTask inside StediMail (2026-11-08). The checklist button switches the board to tasks. */
+.bar #btn-tasks { margin-right: 10px; }   /* apart from the gear */
+.bar #btn-tasks[aria-pressed="true"] { background: #9fbf5a; border-color: #9fbf5a; color: #1b1d21; }
+body:not(.tasks-on) #tasks, body:not(.tasks-on) #tasks-note { display: none !important; }
+body.tasks-on #board, body.tasks-on #sidebar, body.tasks-on #bulk,
+body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picker, body.tasks-on #btn-menu { display: none !important; }
+.tasks-note { gap: 1rem; }
+.task-col .cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; padding: 0 .6rem .4rem; }
+.task-col .done-cards { flex: none; max-height: 40%; }
+.card.task { padding-right: 3.6rem; min-height: 52px; }
+.card.task.finished { opacity: .6; }
+.card.task.finished .task-title { text-decoration: line-through; }
+.task-title { font-weight: 600; overflow-wrap: anywhere; }
+.task-due { font-size: .85rem; color: var(--muted); margin-top: .2rem; }
+.task-due.late { color: #d9534f; font-weight: 600; }
+.task-notes { font-size: .85rem; color: var(--muted); margin-top: .25rem; white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.task-finish { position: absolute; right: .5rem; top: 50%; transform: translateY(-50%); width: 40px; min-height: 40px; padding: 0;
+  border-radius: 50%; font-size: 1.2rem; font-weight: 700; color: #4f8a2b; border-color: #9fbf5a; background: transparent; }
+.task-finish:hover:not(:disabled) { background: #9fbf5a; color: #1b1d21; border-color: #9fbf5a; }
+.task-col .add-task, .task-col .task-new { margin: .3rem .6rem .6rem; width: calc(100% - 1.2rem); }
+.add-task { text-align: left; color: var(--muted); background: transparent; border-style: dashed; }
+.add-task:hover:not(:disabled) { color: var(--text); }
+.show-done { margin: 0 .6rem .6rem; text-align: left; background: transparent; border-color: transparent; color: var(--muted); }
+.add-task-col { flex: 0 0 220px; }
+.add-task-col .add-task, .add-task-col input { width: 100%; }
+.task-col.mail-col h2::before { content: '✉'; margin-left: -1.3rem; opacity: .6; font-weight: normal; }
+dialog.task-edit { max-width: 520px; }
+dialog.task-edit label, dialog.task-edit .field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .8rem; font-weight: 600; }
+dialog.task-edit textarea { resize: vertical; }
+dialog.task-edit .color-row { display: flex; gap: .6rem; }
+dialog.task-edit .color-row input { flex: 1; }
+dialog.task-edit .spacer { flex: 1; }
+.task-col h2 { min-height: 44px; }
+/* Phones: one task column per screen, swipe sideways for the next */
+@media (max-width: 640px) {
+  .tasks-board { gap: .75rem; overflow-x: auto; scroll-snap-type: x mandatory; }
+  .tasks-board .column:not(.phone-shown) { display: flex !important; }
+  .tasks-board .column, .tasks-board .add-task-col { flex: 0 0 calc(100% - 1.5rem) !important; scroll-snap-align: center; }
+}
