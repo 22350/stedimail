@@ -938,10 +938,11 @@ async function runBulk(action, arg) {
     const k = fullySelectedColumn();
     return k !== undefined && !(k < 0 ? state.search?.more : state.more[k]) ? k : undefined;
   })();
+  if (action === 'trash' && !all && !await askConfirm(`Move ${state.selected.size === 1 ? 'this conversation' : state.selected.size.toLocaleString() + ' conversations'} to Trash?`, 'Move to Trash')) return;
   try {
     const change = await bulkChange(action, arg);
     let count;
-    let undo;
+    let undo, redoIt;
     if (all) {
       const t = all.total;
       const howMany = t ? `${t.exact ? '' : 'about '}${t.n.toLocaleString()}` : 'all';
@@ -950,6 +951,7 @@ async function runBulk(action, arg) {
       await batchModify(ids, change.add, change.remove);
       count = t ? t.n : ids.length;
       undo = () => batchModify(ids, change.remove, change.add);
+      redoIt = () => batchModify(ids, change.add, change.remove);
     } else {
       const ids = [...state.selected];
       if (action === 'move' || action === 'archive') {   // a nest moves together
@@ -961,6 +963,7 @@ async function runBulk(action, arg) {
       await modify(change.add, change.remove);
       count = ids.length;
       undo = () => modify(change.remove, change.add);
+      redoIt = () => modify(change.add, change.remove);
     }
     clearSelection();
     setStatus('');
@@ -971,6 +974,7 @@ async function runBulk(action, arg) {
         try { await undo(); setStatus(''); await refreshAfterBulk(); }
         catch (e) { if (!(e instanceof AuthError)) toast('Undo failed: ' + e.message); }
       },
+      redo: async () => { await redoIt(); await refreshAfterBulk(); },
     });
     // Its Undo (and Ctrl+Z) brings the column back; the next one brings the emails back.
     if (action === 'trash' && whole > 0 && whole < columns().length) await removeColumn(whole, true);
@@ -1161,7 +1165,7 @@ async function labelThread(id, add, remove, verb) {
   };
   try {
     await apply(add, remove);
-    toast(verb, { label: 'Undo', run: () => apply(remove, add).catch((e) => toast(e.message)) });
+    toast(verb, { label: 'Undo', run: () => apply(remove, add).catch((e) => toast(e.message)), redo: () => apply(add, remove) });
   } catch (e) {
     if (!(e instanceof AuthError)) toast('Could not update: ' + e.message);
   }
@@ -1767,6 +1771,9 @@ async function moveWithUndo(id, colIdx) {
     toast(`Moved to ${cols[colIdx].name}`, prev < 0 ? null : { label: 'Undo', run: async () => {
       await moveThread(id, prev);
       if (parent) await setNest(id, parent);
+    }, redo: async () => {
+      if (parent) await setNest(id, null);
+      await moveThread(id, colIdx);
     } });
   }
 }
@@ -1794,7 +1801,7 @@ async function archiveThread(id) {
   try {
     await apply(false);
     const said = kids.length ? `Archived, with ${kids.length} nested` : 'Archived';
-    toast(keptIn ? `Archived. It keeps your “${keptIn.name}” label, so it stays in that column.` : said, { label: 'Undo', run: () => apply(true).catch((e) => toast(e.message)) });
+    toast(keptIn ? `Archived. It keeps your “${keptIn.name}” label, so it stays in that column.` : said, { label: 'Undo', run: () => apply(true).catch((e) => toast(e.message)), redo: () => apply(false) });
   } catch (e) {
     if (!(e instanceof AuthError)) toast('Could not archive: ' + e.message);
   }
@@ -1910,10 +1917,23 @@ async function spamThread(id) {
           render();
         } catch (e) { if (!(e instanceof AuthError)) toast(e.message); }
       },
+      redo: async () => {
+        await modify({ addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] });
+        state.threads.delete(id);
+        assign(columns());
+        render();
+      },
     });
   } catch (e) {
     if (!(e instanceof AuthError)) toast('Could not report spam: ' + e.message);
   }
+}
+
+// The trash buttons ask first (Paul, 2026-11-08). The Delete key already asks by needing a second press.
+async function confirmTrash(id) {
+  const t = state.threads.get(id);
+  if (t?.labels.has('TRASH')) return trashThread(id);   // delete forever asks its own question
+  if (await askConfirm(`Move “${t?.subject || 'this email'}” to Trash?`, 'Move to Trash')) trashThread(id);
 }
 
 async function trashThread(id, said = 'Moved to Trash') {
@@ -1934,6 +1954,12 @@ async function trashThread(id, said = 'Moved to Trash') {
           assign(columns());
           render();
         } catch (e) { if (!(e instanceof AuthError)) toast(e.message); }
+      },
+      redo: async () => {
+        await api(`/threads/${id}/trash`, { method: 'POST' });
+        state.threads.delete(id);
+        assign(columns());
+        render();
       },
     });
   } catch (e) {
@@ -2436,18 +2462,44 @@ function renderUndo() {
   b.title = last ? `Undo: ${last.what} (Ctrl+Z)` : 'Nothing to undo';
   b.setAttribute('aria-label', last ? `Undo: ${last.what}` : 'Undo (nothing to undo)');
   const r = $('#btn-redo');
-  const next = tasks.open ? taskHistory.redo[taskHistory.redo.length - 1] : null;
+  const next = tasks.open ? taskHistory.redo[taskHistory.redo.length - 1] : latestRedo();
   r.hidden = !next;
   r.title = next ? `Redo: ${next.what} (Ctrl+Shift+Z)` : '';
   r.setAttribute('aria-label', next ? `Redo: ${next.what}` : 'Redo');
 }
+// Redo in the mail too (Paul, 2026-11-08): a change whose Undo knows how to do it again goes on mailRedo when
+// it's undone; Redo does it again and puts it back on the undo list. A new change empties mailRedo.
+const mailRedo = [];
 async function runUndo(entry) {
   const i = undoStack.indexOf(entry);
   if (i < 0) return;
   undoStack.splice(i, 1);
   renderUndo();
-  try { await entry.run(); toast(`Undone: ${entry.what}`); }
-  catch (e) { if (!(e instanceof AuthError)) toast('Undo failed: ' + e.message); }
+  try {
+    await entry.run();
+    if (entry.redo) { entry.undoneAt = Date.now(); mailRedo.push(entry); }
+    renderUndo();
+    toast(`Undone: ${entry.what}`);
+  } catch (e) { if (!(e instanceof AuthError)) toast('Undo failed: ' + e.message); }
+}
+function latestRedo() {
+  const mail = mailRedo[mailRedo.length - 1], task = taskHistory.redo[taskHistory.redo.length - 1];
+  return !task || (mail && (mail.undoneAt || 0) >= (task.undoneAt || 0)) ? mail : task;
+}
+async function redoLast() {
+  if (tasks.open) { taskRedo(); return; }
+  const next = latestRedo();
+  if (!next) return;
+  if (next === taskHistory.redo[taskHistory.redo.length - 1]) { taskRedo(); return; }
+  mailRedo.pop();
+  renderUndo();
+  try {
+    await next.redo();
+    next.at = Date.now();
+    undoStack.push(next);
+    renderUndo();
+    toast(`Redone: ${next.what}`);
+  } catch (e) { if (!(e instanceof AuthError)) toast('Redo failed: ' + e.message); }
 }
 function latestUndo() {
   const mail = undoStack[undoStack.length - 1], task = taskHistory.undo[taskHistory.undo.length - 1];
@@ -2466,8 +2518,9 @@ function toast(msg, action) {
   const box = $('#toast');
   box.replaceChildren(el('span', {}, msg));
   if (action) {
-    const entry = action.label === 'Undo' && action.stack !== false ? { what: msg, run: action.run, at: Date.now() } : null;
+    const entry = action.label === 'Undo' && action.stack !== false ? { what: msg, run: action.run, redo: action.redo, at: Date.now() } : null;
     if (entry) {
+      mailRedo.length = 0;   // a new change: nothing to redo
       undoStack.push(entry);
       undoStack.splice(0, Math.max(0, undoStack.length - UNDO_MAX));
       renderUndo();
@@ -2551,11 +2604,15 @@ async function removeColumn(i, afterDelete = false, { askTasks = true } = {}) {
   const id = state.labelIds[name];
   const own = isOwnLabel(name);
   const beforeLabels = { ...settings.columnLabels };
+  // Every delete asks first (Paul, 2026-11-08); emptying a column into Trash already asked.
+  if (!afterDelete && askTasks && !await askConfirm(`Remove the “${name}” column?\n\nIts emails stay in Gmail.`, 'Remove column')) return;
   const undoTasks = askTasks ? await askRemoveTaskProject(name) : null;
   const undo = () => { settings.columnLabels = beforeLabels; saveColumnList(before); undoTasks?.(); };
-  saveColumnList(before.filter((_, k) => k !== i - 1));
+  const after = before.filter((_, k) => k !== i - 1);
+  const redo = async () => saveColumnList(after);
+  saveColumnList(after);
   if (own) {               // one of their own labels: it stays exactly as it was in Gmail
-    toast(said(`Removed the “${name}” column. Your label is unchanged.`), { label: 'Undo', run: undo });
+    toast(said(`Removed the “${name}” column. Your label is unchanged.`), { label: 'Undo', run: undo, redo });
     return;
   }
   // An empty StediMail column's label is deleted too, so nothing is left behind; one with emails keeps it.
@@ -2565,11 +2622,11 @@ async function removeColumn(i, afterDelete = false, { askTasks = true } = {}) {
     try {
       await api(`/labels/${id}`, { method: 'DELETE' });
       delete state.labelIds[name];
-      toast(said(`Removed “${name}” and its empty Gmail label.`), { label: 'Undo', run: undo });
+      toast(said(`Removed “${name}” and its empty Gmail label.`), { label: 'Undo', run: undo, redo });
       return;
     } catch {}
   }
-  toast(said(`Removed “${name}”. Its emails keep the label in Gmail.`), { label: 'Undo', run: undo });
+  toast(said(`Removed “${name}”. Its emails keep the label in Gmail.`), { label: 'Undo', run: undo, redo });
 }
 
 function addColumn(name) {
@@ -2914,7 +2971,7 @@ function renderCard(t, colIdx) {
       iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, t.id)),
       iconButton('Archive', 'archive', () => archiveThread(t.id)),
       iconButton('Report spam', 'spam', () => spamThread(t.id)),
-      iconButton('Delete', 'trash', () => trashThread(t.id)),
+      iconButton('Delete', 'trash', () => confirmTrash(t.id)),
       t.unread
         ? iconButton('Mark as read', 'read', () => toggleRead(t.id))
         : iconButton('Mark as unread', 'unread', () => toggleRead(t.id)),
@@ -3407,7 +3464,7 @@ function renderActions(box, id) {
     iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, id)),
     iconButton('Archive', 'archive', () => archiveThread(id)),
     iconButton('Report spam', 'spam', () => spamThread(id)),
-    iconButton('Delete', 'trash', () => trashThread(id)),
+    iconButton('Delete', 'trash', () => confirmTrash(id)),
     t?.unread
       ? iconButton('Mark as read', 'read', () => toggleRead(id))
       : iconButton('Mark as unread', 'unread', () => toggleRead(id)),
@@ -4292,6 +4349,7 @@ function openSettings() {
   );
   $('#set-client').value = settings.clientId;
   $('#set-steditask').checked = store.get('stediTaskLink', false);
+  $('#set-gtasks').checked = gtasksOn();
   $('#set-error').textContent = '';
   $('#settings').showModal();
 }
@@ -4483,6 +4541,7 @@ function taskUndo() {
   const step = taskHistory.undo.pop();
   if (!step) { toast('Nothing to undo.'); return; }
   applyTaskSnap(step.before, step.cols);
+  step.undoneAt = Date.now();
   taskHistory.redo.push(step);
   renderUndo();
   toast(`Undone: ${step.what}`);
@@ -4629,7 +4688,7 @@ function tasksOffline(why) {
 // Called from clicks, so a Google window for the permission isn't blocked; the upload waits a moment so
 // quick changes go up together.
 function saveTasks(what = 'change') {
-  if (what === null) taskHistory.base = taskSnap(); else recordTask(what);
+  if (what === null) taskHistory.base = taskSnap(); else { recordTask(what); gtasksSoon(); }
   store.set('tasks', tasksData());
   store.set('tasksDirty', true);
   if (!tasks.synced) return;   // pullTasks() sends it once connected
@@ -4650,6 +4709,7 @@ function openTasks() {
   renderTasks();
   renderUndo();
   if (!tasks.synced) pullTasks();
+  syncGoogleTasks();
 }
 
 function closeTasks() {
@@ -4719,6 +4779,14 @@ function isFinishedTask(t) {
   return t.col === cols[cols.length - 1];
 }
 
+// Search inside StediTask (Paul, 2026-11-08): the box in the top bar shows only the tasks whose name, outline,
+// people or project match, in the board and the Timeline.
+function taskMatches(t) {
+  const q = ($('#task-search')?.value || '').trim().toLowerCase();
+  if (!q) return true;
+  return [t.title, t.notes, t.project, ...(t.people || []).flatMap((p) => [p.name, p.addr])].some((x) => (x || '').toLowerCase().includes(q));
+}
+
 function renderTasks() {
   const box = $('#tasks');
   const scrolls = [...box.querySelectorAll('.cards')].map((c) => c.scrollTop);
@@ -4764,7 +4832,7 @@ function renderAllColumns(list) {
   }
   const order = [...middle.filter((c) => !lasts.includes(c)), ...lasts];
   const names = list.map((p) => p.name);
-  const items = tasksData().items.filter((t) => names.includes(t.project));
+  const items = tasksData().items.filter((t) => names.includes(t.project) && taskMatches(t));
   return order.map((col) => {
     const here = items.filter((t) => t.col === col);
     const node = el('section', { class: 'column task-col all-col', 'data-col': col }, [
@@ -4803,7 +4871,7 @@ function renderTimeline(projects, list) {
   const startOf = (t) => t.start || (t.added ? iso(t.added) : '') || t.due || todayIso;
   const endOf = (t) => (t.due && t.due >= startOf(t) ? t.due : startOf(t));
   const names = projects.map((p) => p.name);
-  const items = tasksData().items.filter((t) => names.includes(t.project));
+  const items = tasksData().items.filter((t) => names.includes(t.project) && taskMatches(t));
   const first = Math.min(addDays(today, -7), ...items.map((t) => at(startOf(t))));
   const start = addDays(first, -((new Date(first).getDay() + 6) % 7));   // a Monday
   const last = Math.max(addDays(today, 56), ...items.map((t) => at(endOf(t))));
@@ -4980,7 +5048,7 @@ const taskSortOf = (p, col) => TASK_SORTS.find((x) => x.key === p.sorts?.[col]) 
 function renderTaskColumn(project, col, last) {
   const p = taskProject(project);
   const sort = taskSortOf(p, col);
-  let items = tasksData().items.filter((t) => t.project === project && t.col === col);
+  let items = tasksData().items.filter((t) => t.project === project && t.col === col && taskMatches(t));
   if (sort.cmp) items = [...items].sort(sort.cmp);
   const sortBtn = iconButton(`Sort: ${sort.label}`, 'sort', (b) => openMenu(b, [
     { heading: 'Sort' },
@@ -5133,7 +5201,7 @@ async function removeTaskColumn(project, col) {
   const d = tasksData();
   const p = taskProject(project);
   const inIt = d.items.filter((t) => t.project === project && t.col === col);
-  if (inIt.length && !await askConfirm(`Remove the “${col}” column and its ${inIt.length} task${inIt.length > 1 ? 's' : ''}?`, 'Remove')) return;
+  if (!await askConfirm(inIt.length ? `Remove the “${col}” column and its ${inIt.length} task${inIt.length > 1 ? 's' : ''}?` : `Remove the “${col}” column?`, 'Remove')) return;
   p.columns = p.columns.filter((c) => c !== col);
   d.items = d.items.filter((t) => !(t.project === project && t.col === col));
   saveTasks(`Removed column “${col}”`);
@@ -5331,7 +5399,8 @@ function openTaskDialog(opts = {}) {
     if (a != null && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
     if (tasks.open) renderTasks(); else render();
   });
-  del?.addEventListener('click', () => {
+  del?.addEventListener('click', async () => {
+    if (!await askConfirm(`Delete “${editing.title}”?`, 'Delete')) return;
     finish();
     const items = tasksData().items;
     items.splice(items.indexOf(editing), 1);
@@ -5433,17 +5502,18 @@ function toggleTaskFold(id) {
 
 function taskCardParts(t, { finished = false, finish = null, tagColor = null } = {}) {
   const late = !finished && t.due && taskMoment(t) < Date.now();
-  if (t.collapsed) {   // one line: the name, the bell, when it's due
-    return [el('div', { class: 'top' }, [el('span', { class: 'task-head task-title' }, t.title), t.alarm != null ? bellIcon() : null,
-      t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, taskWhenText(t)) : null, finish])];
-  }
-  const del = el('button', { type: 'button', class: 'task-delete', title: 'Delete task', 'aria-label': `Delete task: ${t.title}` }, xIcon());   // a square red ✕ (Paul, 2026-11-08)
+  const del = el('button', { type: 'button', class: 'task-delete', title: 'Delete task', 'aria-label': `Delete task: ${t.title}` }, xIcon());
   del.addEventListener('click', (e) => { e.stopPropagation(); askDeleteTask(t.id); });
+  if (t.collapsed) {   // one line: the name, the bell, when it's due, ✓ and the red ✕ always there (Paul, 2026-11-08)
+    return [el('div', { class: 'top' }, [el('span', { class: 'task-head task-title' }, t.title), t.alarm != null ? bellIcon() : null,
+      t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, taskWhenText(t)) : null, finish, del])];
+  }
   const desc = t.notes ? el('div', { class: 'task-desc' }, t.notes) : null;
   const people = t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
     el('span', { class: 'colab-list' }, t.people.map((p) => el('span', {}, p.name ? `${p.name} <${p.addr}>` : p.addr)))]) : null;
   const head = el('span', { class: 'task-head task-title' }, t.title);
-  const top = el('div', { class: 'top' }, [head, finish]);
+  finish?.classList.add('task-finish-fixed');   // held in place just left of the ✕ (Paul, 2026-11-08)
+  const top = el('div', { class: 'top' + (finish ? ' has-finish' : '') }, [head, finish]);
   const due = t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, 'Due ' + taskWhenText(t)) : null;
   // The red ✕ always in the top right corner; the bell, bigger, in the middle of the right side (Paul, 2026-11-08).
   const corner = el('div', { class: 'task-corner' }, del);
@@ -5519,6 +5589,240 @@ function soundTaskAlarm(t) {
   toast(`⏰ ${t.title}${when ? ' — ' + when : ''}`, { label: 'Open', run: () => openTaskDialog({ id: t.id }) });
 }
 
+// ---------- Google Tasks (Paul, 2026-11-08) ----------
+// Turned on in Settings. Both ways: each project is a Google Tasks list (General is the main "My Tasks" list),
+// and a task added, changed, finished or deleted in either place follows in the other. Google keeps the title,
+// the outline, the due date and done / not done; the time, alarm and CoLab people are written under the
+// outline in Google's notes (and read back from there are left out of the outline). Which Google tasks were
+// seen at the last sync is kept on this computer, so a task missing on one side was deleted there.
+const GTASKS_SCOPE = 'https://www.googleapis.com/auth/tasks';
+const GTASKS_API = 'https://www.googleapis.com/tasks/v1';
+const GTASKS_SYNC_MS = 60 * 1000;
+const GTASKS_FOOTER = '\n\n— StediTask —\n';
+const gtasks = { auth: { token: null, exp: 0, pending: null }, timer: null, running: null, again: false };
+
+const gtasksOn = () => store.get('gtasksLink', false);
+const gtasksTokenReady = () => state.token && Date.now() < state.tokenExp && (state.tokenScopes || '').split(' ').includes(GTASKS_SCOPE);
+
+// The Google window asks only when called from a click (turning it on, or "Allow" on the note).
+function gtasksSignIn() {
+  if (gtasksTokenReady()) return Promise.resolve(state.token);
+  const a = gtasks.auth;
+  if (a.token && Date.now() < a.exp) return Promise.resolve(a.token);
+  if (a.pending) return a.pending;
+  a.pending = new Promise((resolve, reject) => {
+    google.accounts.oauth2.initTokenClient({
+      client_id: settings.clientId,
+      scope: SCOPE + ' ' + GTASKS_SCOPE,
+      include_granted_scopes: true,
+      callback: (resp) => {
+        if (resp.error || !google.accounts.oauth2.hasGrantedAllScopes(resp, GTASKS_SCOPE)) { reject(new Error('Google Tasks permission wasn\'t given')); return; }
+        setToken(resp.access_token, resp.expires_in, resp.scope);
+        a.token = resp.access_token;
+        a.exp = state.tokenExp;
+        resolve(resp.access_token);
+      },
+      error_callback: (err) => reject(new Error(err.type === 'popup_closed' ? 'The Google window was closed' : 'Google Tasks sign-in failed: ' + err.type)),
+    }).requestAccessToken({ login_hint: state.me, prompt: '' });
+  }).finally(() => { a.pending = null; });
+  return a.pending;
+}
+
+async function gt(path, { method = 'GET', body } = {}) {
+  const token = gtasksTokenReady() ? state.token : gtasks.auth.token;
+  if (!token) throw new Error('needs permission');
+  const res = await fetch(GTASKS_API + path, { method, headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 204 || (method === 'DELETE' && res.ok)) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.error?.message || res.statusText); e.status = res.status; throw e; }
+  return data;
+}
+
+async function gtAll(path, key = 'items') {
+  const out = [];
+  let page = '';
+  do {
+    const r = await gt(path + (path.includes('?') ? '&' : '?') + 'maxResults=100' + (page ? '&pageToken=' + page : ''));
+    out.push(...(r[key] || []));
+    page = r.nextPageToken || '';
+  } while (page);
+  return out;
+}
+
+// What Google's notes say: the outline, then the StediTask details.
+function gtasksNotes(t) {
+  const extra = [];
+  if (t.dueTime) extra.push('Time: ' + new Date(`${t.due || '2000-01-01'}T${t.dueTime}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+  if (t.alarm != null) extra.push('Alarm: ' + (TASK_ALARMS.find(([v]) => v === t.alarm)?.[1] || t.alarm + ' minutes before'));
+  if (t.people?.length) extra.push('CoLab: ' + t.people.map((p) => (p.name ? `${p.name} <${p.addr}>` : p.addr)).join(', '));
+  return (t.notes || '') + (extra.length ? GTASKS_FOOTER + extra.join('\n') : '');
+}
+const gtasksOutline = (notes) => (notes || '').split(GTASKS_FOOTER)[0].replace(/^\n+|\n+$/g, '');
+const gtasksHash = (t) => JSON.stringify([t.title, gtasksNotes(t), t.due || '', isFinishedTask(t)]);
+const gtasksBody = (t) => ({ title: t.title, notes: gtasksNotes(t), due: t.due ? `${t.due}T00:00:00.000Z` : null,
+  status: isFinishedTask(t) ? 'completed' : 'needsAction', completed: isFinishedTask(t) ? undefined : null });
+
+function gtasksNote(msg, button) {
+  const note = $('#tasks-note');
+  if (!msg) { if (note.dataset.from === 'gtasks') { note.hidden = true; delete note.dataset.from; } return; }
+  note.dataset.from = 'gtasks';
+  note.replaceChildren(el('span', {}, msg), button || '');
+  note.hidden = false;
+}
+
+// One sync at a time; a change made during one is sent straight after.
+function syncGoogleTasks() {
+  if (!gtasksOn() || !state.token) return;
+  if (gtasks.running) { gtasks.again = true; return; }
+  if (!gtasksTokenReady() && !(gtasks.auth.token && Date.now() < gtasks.auth.exp)) {
+    const b = el('button', { type: 'button' }, 'Allow');
+    b.addEventListener('click', () => gtasksSignIn().then(() => { gtasksNote(''); syncGoogleTasks(); }, (e) => gtasksNote(e.message)));
+    gtasksNote('Google Tasks needs your permission to stay linked.', b);
+    return;
+  }
+  gtasks.running = runGoogleTasksSync().then(() => gtasksNote(''), (e) => {
+    if (/has not been used|is disabled|accessNotConfigured/i.test(e.message)) {
+      const a = el('a', { href: 'https://console.cloud.google.com/apis/library/tasks.googleapis.com', target: '_blank', rel: 'noopener' }, 'Turn it on in Google Cloud');
+      gtasksNote('The Google Tasks API is off for StediMail.', a);
+    } else gtasksNote('Google Tasks: ' + e.message);
+  }).finally(() => {
+    gtasks.running = null;
+    if (gtasks.again) { gtasks.again = false; syncGoogleTasks(); }
+  });
+}
+
+// Soon after a task change (saveTasks calls this).
+function gtasksSoon() {
+  if (!gtasksOn()) return;
+  clearTimeout(gtasks.timer);
+  gtasks.timer = setTimeout(syncGoogleTasks, 1500);
+}
+
+async function runGoogleTasksSync() {
+  const d = tasksData();
+  const seen = store.get('gtasksSeen', { lists: {}, ours: [] });   // list id -> task ids at the last sync
+  let changed = false;
+
+  // Lists ↔ projects. General is the default list; one with a project's name is that project's; others become projects.
+  const lists = await gtAll('/users/@me/lists');
+  const def = await gt('/users/@me/lists/@default');
+  const byId = new Map(lists.map((l) => [l.id, l]));
+  const projects = taskProjects();
+  const listOf = (name) => (name === GENERAL ? def.id : taskProject(name).gList);
+  for (const p of projects) {
+    const proj = taskProject(p.name);
+    if (p.name === GENERAL) { if (proj.gList !== def.id) { proj.gList = def.id; changed = true; } continue; }
+    if (proj.gList && byId.has(proj.gList)) {
+      if (byId.get(proj.gList).title !== p.name) await gt(`/users/@me/lists/${proj.gList}`, { method: 'PATCH', body: { title: p.name } });   // renamed here
+      continue;
+    }
+    const same = lists.find((l) => l.title === p.name && l.id !== def.id);
+    const list = same || await gt('/users/@me/lists', { method: 'POST', body: { title: p.name } });
+    if (!same) { lists.push(list); byId.set(list.id, list); }
+    proj.gList = list.id;
+    seen.ours = [...new Set([...seen.ours, list.id])];
+    changed = true;
+  }
+  // A list StediTask made whose project is gone here: remove it on Google.
+  const used = new Set(d.projects.map((p) => p.gList).filter(Boolean));
+  for (const id of seen.ours) {
+    if (used.has(id) || id === def.id) continue;
+    if (byId.has(id)) await gt(`/users/@me/lists/${id}`, { method: 'DELETE' }).catch(() => {});
+    byId.delete(id);
+    delete seen.lists[id];
+  }
+  seen.ours = seen.ours.filter((id) => used.has(id));
+  // A Google list with no project here (made on Google): a new project.
+  for (const l of lists) {
+    if (l.id === def.id || used.has(l.id) || !byId.has(l.id)) continue;
+    if (Object.prototype.hasOwnProperty.call(seen.lists, l.id)) continue;   // its project was removed here (handled above)
+    let name = l.title || 'Google list';
+    while (taskProjects().some((p) => p.name.toLowerCase() === name.toLowerCase())) name += ' (Google)';
+    const p = taskProject(name);
+    p.own = true;
+    p.gList = l.id;
+    used.add(l.id);
+    seen.ours = [...new Set([...seen.ours, l.id])];   // removing its project here removes the list on Google too
+    changed = true;
+  }
+
+  // Tasks, list by list.
+  for (const p of d.projects.filter((x) => x.gList && byId.has(x.gList) || x.name === GENERAL)) {
+    const listId = listOf(p.name);
+    if (!listId) continue;
+    const remote = await gtAll(`/lists/${listId}/tasks?showCompleted=true&showHidden=true`);
+    const remoteById = new Map(remote.map((r) => [r.id, r]));
+    const before = new Set(seen.lists[listId] || []);
+    const local = d.items.filter((t) => t.project === p.name);
+    // A task that moved here from another project: off its old list.
+    for (const t of local) {
+      if (t.gId && t.gList && t.gList !== listId) {
+        await gt(`/lists/${t.gList}/tasks/${t.gId}`, { method: 'DELETE' }).catch(() => {});
+        delete t.gId; delete t.gHash; delete t.gUpdated;
+        changed = true;
+      }
+    }
+    // Deleted on Google: delete here. Deleted here: delete on Google.
+    for (const t of [...local]) {
+      if (t.gId && before.has(t.gId) && !remoteById.has(t.gId)) {
+        d.items.splice(d.items.indexOf(t), 1);
+        local.splice(local.indexOf(t), 1);
+        changed = true;
+      }
+    }
+    const localIds = new Set(local.map((t) => t.gId).filter(Boolean));
+    for (const r of remote) {
+      if (before.has(r.id) && !localIds.has(r.id)) {
+        await gt(`/lists/${listId}/tasks/${r.id}`, { method: 'DELETE' }).catch(() => {});
+        remoteById.delete(r.id);
+      }
+    }
+    // Both sides of every pair, and the new ones.
+    const cols = p.columns;
+    for (const t of local) {
+      const r = t.gId ? remoteById.get(t.gId) : null;
+      if (!r) {   // new here (or its Google copy is gone without our knowing): add it on Google
+        const made = await gt(`/lists/${listId}/tasks`, { method: 'POST', body: gtasksBody(t) });
+        Object.assign(t, { gId: made.id, gList: listId, gUpdated: made.updated, gHash: gtasksHash(t) });
+        changed = true;
+        continue;
+      }
+      const localChanged = gtasksHash(t) !== t.gHash;
+      const remoteChanged = r.updated !== t.gUpdated;
+      if (localChanged) {   // this side wins when both changed
+        const upd = await gt(`/lists/${listId}/tasks/${t.gId}`, { method: 'PATCH', body: gtasksBody(t) });
+        Object.assign(t, { gUpdated: upd.updated, gHash: gtasksHash(t) });
+        changed = true;
+      } else if (remoteChanged) {
+        t.title = r.title || t.title;
+        t.notes = gtasksOutline(r.notes);
+        const due = r.due ? r.due.slice(0, 10) : '';
+        if (due !== (t.due || '')) { t.due = due; if (!due) { t.dueTime = ''; t.alarm = null; } }
+        const done = r.status === 'completed';
+        if (done !== isFinishedTask(t)) t.col = done ? cols[cols.length - 1] : cols[0];
+        Object.assign(t, { gUpdated: r.updated, gHash: gtasksHash(t) });
+        changed = true;
+      }
+    }
+    for (const r of remote) {   // new on Google: add it here
+      if (!remoteById.has(r.id) || localIds.has(r.id) || before.has(r.id) || !r.title) continue;
+      const t = { id: crypto.randomUUID(), title: r.title, notes: gtasksOutline(r.notes), people: [], due: r.due ? r.due.slice(0, 10) : '',
+        dueTime: '', alarm: null, project: p.name, col: r.status === 'completed' ? cols[cols.length - 1] : cols[0], added: Date.now(),
+        gId: r.id, gList: listId, gUpdated: r.updated };
+      t.gHash = gtasksHash(t);
+      insertTaskByDate(t);
+      changed = true;
+    }
+    seen.lists[listId] = d.items.filter((t) => t.project === p.name && t.gId).map((t) => t.gId);
+  }
+  store.set('gtasksSeen', seen);
+  if (changed) {
+    saveTasks(null);   // not an undo step
+    if (tasks.open) renderTasks(); else render();
+  }
+}
+
 function onKey(e) {
   // Ctrl+Z: undo the last change (in a text field or while writing, the field's own undo instead).
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z'
@@ -5528,10 +5832,10 @@ function onKey(e) {
     return;
   }
   // Ctrl+Shift+Z or Ctrl+Y: redo, in StediTask.
-  if (tasks.open && (e.ctrlKey || e.metaKey) && !e.altKey && ((e.shiftKey && e.key.toLowerCase() === 'z') || (!e.shiftKey && e.key.toLowerCase() === 'y'))
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && ((e.shiftKey && e.key.toLowerCase() === 'z') || (!e.shiftKey && e.key.toLowerCase() === 'y'))
       && !e.target.closest?.('input, textarea, [contenteditable], #reader')) {
     e.preventDefault();
-    taskRedo();
+    redoLast();
     return;
   }
   // Typing in a field ignores shortcuts, except Esc inside the email window: it closes it (drafts are kept).
@@ -5753,9 +6057,27 @@ function wireUi() {
       $('#set-error').textContent = result.error;
       return;
     }
+    const removing = settings.columns.filter((n) => !result.cols.some((c) => c.orig === n));
+    if (removing.length && !e.confirmedRemove) {   // removing columns asks first; then the save carries on
+      e.preventDefault();
+      askConfirm(`Remove ${removing.length === 1 ? `the “${removing[0]}” column` : `${removing.length} columns (${removing.join(', ')})`}?\n\nTheir emails stay in Gmail.`, 'Remove').then((yes) => {
+        if (!yes) return;
+        const again = new SubmitEvent('submit', { submitter: e.submitter, cancelable: true });
+        again.confirmedRemove = true;
+        $('#settings form').dispatchEvent(again);
+        $('#settings').close();
+      });
+      return;
+    }
     settings.barColor = $('#set-barcolor').value.toLowerCase() === DEFAULT_BAR ? null : $('#set-barcolor').value;
     store.set('barColor', settings.barColor);
     store.set('stediTaskLink', $('#set-steditask').checked);
+    const gWas = gtasksOn();
+    store.set('gtasksLink', $('#set-gtasks').checked);
+    if ($('#set-gtasks').checked && !gWas) {   // from this click, so Google's window may open to ask
+      gtasksSignIn().then(() => { toast('Linking StediTask to Google Tasks…'); syncGoogleTasks(); },
+        (e) => { store.set('gtasksLink', false); toast('Google Tasks not linked: ' + e.message); });
+    }
     applySettings(result);
   });
   // The color previews live; Cancel (or Esc) puts the saved one back.
@@ -5783,8 +6105,10 @@ function wireUi() {
   });
   document.addEventListener('keydown', onKey);
   $('#btn-undo').addEventListener('click', undoLast);
-  $('#btn-redo').addEventListener('click', taskRedo);
+  $('#btn-redo').addEventListener('click', redoLast);
   for (const b of document.querySelectorAll('#task-views button')) b.addEventListener('click', () => setTaskView(b.dataset.view));
+  $('#task-search').addEventListener('input', () => renderTasks());
+  $('#task-search').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.target.value = ''; renderTasks(); } });
   $('#btn-downloads').addEventListener('click', (e) => { e.stopPropagation(); openDownloads(e.currentTarget); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && Date.now() - state.lastLoad > 60000) loadBoard();
@@ -5798,6 +6122,8 @@ function wireUi() {
   setInterval(watchMailbox, WATCH_MS);
   setInterval(linkStediTask, STEDITASK_MS);
   setInterval(checkTaskAlarms, TASK_ALARM_MS);
+  setInterval(syncGoogleTasks, GTASKS_SYNC_MS);
+  setTimeout(syncGoogleTasks, 5000);
   setTimeout(checkTaskAlarms, 3000);
   linkStediTask();
 }

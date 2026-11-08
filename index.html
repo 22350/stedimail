@@ -9,16 +9,16 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=20261108111914">
+<link rel="stylesheet" href="style.css?v=20261108132115">
 <script src="https://accounts.google.com/gsi/client" async></script>
-<script src="app.js?v=20261108111914" defer></script>
+<script src="app.js?v=20261108132115" defer></script>
 </head>
 <body>
 <header class="bar">
   <div class="bar-side">
   <button id="btn-menu" class="menu-btn" title="Show or hide folders" aria-label="Show or hide folders" hidden>☰</button>
   <h1><img class="logo mail-logo" src="stedimail-logo.svg" alt="StediMail" width="1016" height="230"><img class="logo task-logo" src="steditask-logo.svg" alt="StediTask" width="1078" height="230"></h1>
-  <div id="task-views" class="task-views" role="group" aria-label="View"><button type="button" data-view="board" aria-pressed="true">Board</button><button type="button" data-view="timeline" aria-pressed="false">Timeline</button></div>
+  <div id="task-views" class="task-views" role="group" aria-label="View"><button type="button" data-view="board" aria-pressed="true">Board</button><button type="button" data-view="timeline" aria-pressed="false">Timeline</button><input id="task-search" type="search" placeholder="Search tasks" aria-label="Search tasks" autocomplete="off"></div>
   <button id="btn-refresh" type="button" hidden title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></button>
   <button id="btn-compose" hidden>Compose</button>
   <button id="btn-downloads" type="button" hidden title="Downloads" aria-label="Downloads"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M5 20h14"/></svg></button>
@@ -82,6 +82,8 @@
       <span>StediTask on this computer</span>
       <label class="check"><input type="checkbox" id="set-steditask"> Give each column a project in the StediTask window</label>
       <p class="hint">Renaming a column renames its project. Removing a column keeps the project and its tasks. Projects made in StediTask only become columns if you say yes there.</p>
+      <label class="check"><input type="checkbox" id="set-gtasks"> Link StediTask to Google Tasks (both ways)</label>
+      <p class="hint">Each project is a Google Tasks list (General is "My Tasks"). Adding, changing, finishing or deleting a task in either place does the same in the other. The time, alarm and CoLab people go in the Google task's notes.</p>
     </div>
     <div class="field">
       <span>Rules</span>
