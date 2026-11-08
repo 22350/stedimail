@@ -663,19 +663,20 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
    the description below at normal weight, people after "CoLab:" one per line, Delete on the last line. */
 .card.task-card { border: 2px solid var(--text); background: color-mix(in srgb, var(--panel) 76%, #000); padding: .55rem .85rem; min-height: 0; flex: none; }   /* 10% darker, then 15% darker again (Paul, 2026-11-08) */
 .card.task-card .top { display: flex; gap: .6rem; align-items: center; }
-.card.task-card .task-head { flex: 1; font-size: 2rem; font-weight: normal; line-height: 1.15; overflow-wrap: break-word; min-width: 0; }
+.card.task-card .task-head { flex: 1; font-size: 1.8rem; font-weight: normal; line-height: 1.15; overflow-wrap: break-word; min-width: 0; }
 .task-bell { display: inline-flex; color: var(--muted); vertical-align: -.15em; margin-left: .3rem; }
 .task-bell svg { width: 1.05em; height: 1.05em; }
 .card.task-card .task-bell { font-size: 1.6rem; margin-left: 0; flex: none; }
 .card.task-card .task-when { display: block; margin-top: .15rem; color: var(--muted); }
 .card.task-card .task-when.late { color: #d9534f; font-weight: 700; }
-.card.task-card .task-desc { margin-top: .25rem; font-size: 1.4rem; line-height: 1.25; font-weight: normal; white-space: pre-wrap; overflow-wrap: anywhere;
+.card.task-card .task-desc { margin-top: .25rem; font-size: 1.05rem; line-height: 1.25; font-weight: normal; white-space: pre-wrap; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }   /* two lines, then … (Paul, 2026-11-08) */
 .card.task-card .colab { font-weight: 700; color: var(--text); }
-.card.task-card .task-last { display: flex; align-items: flex-end; gap: .75rem; margin-top: .25rem; }
-.card.task-card .task-last > :first-child { flex: 1; min-width: 0; }
+.card.task-card .task-row2 { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-top: .15rem; }
+.card.task-card .task-row2 .task-when { margin-top: 0; }
+.card.task-card .task-people { margin-top: .3rem; }
 .card.task-card .task-delete { flex: none; min-height: 0; height: 32px; padding: 0 .85rem; font-size: .95rem; font-weight: 700; border-radius: 7px;
-  margin-bottom: 6px;   /* its bottom level with the bottom of the last line of text */
+  margin-bottom: 0;
   background: rgba(224, 80, 80, .16); border: 1px solid rgba(224, 80, 80, .45); color: inherit; }
 .card.task-card .task-delete:hover { background: rgba(224, 80, 80, .28); border-color: rgba(224, 80, 80, .7); }
 .card.task-card .task-people { display: flex; align-items: flex-start; font-weight: normal; }

@@ -5394,11 +5394,9 @@ function taskCardParts(t, { finished = false, finish = null, tagColor = null } =
     el('span', { class: 'colab-list' }, t.people.map((p) => el('span', {}, p.name ? `${p.name} <${p.addr}>` : p.addr)))]) : null;
   const head = el('span', { class: 'task-head task-title' }, t.title);
   const top = el('div', { class: 'top' }, [head, t.alarm != null ? bellIcon() : null, finish]);
-  const due = t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, 'Due ' + taskWhenText(t)) : null;
-  // Delete sits on the last line of text, at its right.
-  const lines = [top, due, desc, people].filter(Boolean);
-  const last = lines.pop();
-  const body = [...lines, el('div', { class: 'task-last' }, [last, del])];
+  const due = t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, 'Due ' + taskWhenText(t)) : el('span');
+  // Delete under the bell, on the due date's line (Paul, 2026-11-08).
+  const body = [top, el('div', { class: 'task-row2' }, [due, del]), desc, people];
   return [tagColor ? el('div', { class: 'task-proj', style: `--tab:${tagColor}` }, t.project) : null, ...body];
 }
 
