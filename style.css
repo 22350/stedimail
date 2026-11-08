@@ -711,11 +711,12 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 dialog.task-edit h2 { margin: 0 0 .8rem; font-size: 1.2rem; }
 /* The Outline: a small microphone in its corner, its links clickable under it (Paul, 2026-11-08) */
 dialog.task-edit .outline-wrap { position: relative; }
-dialog.task-edit .outline-wrap textarea { padding-right: 2.8rem; }
-.dictate-small { position: absolute; right: 6px; bottom: 8px; width: 30px; height: 30px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
-  border-radius: 8px; background: transparent; border: 1px solid var(--border); color: var(--muted); }
-.dictate-small svg { width: 18px; height: 18px; fill: currentColor; }
-.dictate-small:hover { color: var(--text); border-color: var(--text); }
+dialog.task-edit .outline-wrap textarea { padding-right: 3.2rem; min-height: 5.2rem; }
+/* Round, like the big microphone in a reply (Paul, 2026-11-08) */
+.dictate-small { position: absolute; right: 8px; bottom: 8px; width: 36px; height: 36px; min-height: 0; padding: 0; display: grid; place-items: center;
+  border-radius: 50%; background: transparent; border: 2px solid var(--muted); color: var(--text); }
+.dictate-small svg { width: 21px; height: 21px; fill: currentColor; }
+.dictate-small:hover { background: var(--col); border-color: var(--text); }
 .dictate-small.listening, .dictate-small.listening:hover { background: #d93025; border-color: #d93025; color: #fff; }
 .outline-links { display: flex; flex-wrap: wrap; gap: .3rem .9rem; font-weight: normal; font-size: .9rem; }
 .outline-links:empty { display: none; }
