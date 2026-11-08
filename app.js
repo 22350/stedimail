@@ -5387,7 +5387,7 @@ function taskCardParts(t, { finished = false, finish = null, tagColor = null } =
     return [el('div', { class: 'top' }, [el('span', { class: 'task-head task-title' }, t.title), t.alarm != null ? bellIcon() : null,
       t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, taskWhenText(t)) : null, finish])];
   }
-  const del = el('button', { type: 'button', class: 'task-delete', 'aria-label': `Delete task: ${t.title}` }, 'Delete');
+  const del = el('button', { type: 'button', class: 'task-delete', title: 'Delete task', 'aria-label': `Delete task: ${t.title}` }, '✕');   // a square red ✕ (Paul, 2026-11-08)
   del.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(t.id); });
   const desc = t.notes ? el('div', { class: 'task-desc' }, t.notes) : null;
   const people = t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),

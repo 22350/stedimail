@@ -675,10 +675,10 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .card.task-card .task-row2 { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-top: .15rem; }
 .card.task-card .task-row2 .task-when { margin-top: 0; }
 .card.task-card .task-people { margin-top: .3rem; }
-.card.task-card .task-delete { flex: none; min-height: 0; height: 32px; padding: 0 .85rem; font-size: .95rem; font-weight: 700; border-radius: 7px;
-  margin-bottom: 0;
-  background: rgba(224, 80, 80, .16); border: 1px solid rgba(224, 80, 80, .45); color: inherit; }
-.card.task-card .task-delete:hover { background: rgba(224, 80, 80, .28); border-color: rgba(224, 80, 80, .7); }
+.card.task-card .task-delete { flex: none; width: 29px; height: 29px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  font-size: 1.23rem; line-height: 1; border-radius: 8px; color: var(--text);
+  background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); }   /* square red ✕, like the red Downloads button */
+.card.task-card .task-delete:hover { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
 .card.task-card .task-people { display: flex; align-items: flex-start; font-weight: normal; }
 .card.task-card .colab-list { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .card.task-card .task-finish { position: static; transform: none; flex: none; }
