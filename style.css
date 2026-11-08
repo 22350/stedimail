@@ -654,8 +654,8 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
   border-radius: 8px; border: 1px solid currentColor; background: transparent; color: var(--bar-text); opacity: .75; }
 .column h2 .add-task-btn:hover { opacity: 1; background: rgba(255,255,255,.12); }
 .column h2 .add-task-btn svg { width: 17px; height: 17px; }   /* header buttons 15% smaller (Paul, 2026-11-08) */
-.column h2 .add-task-btn.plus { border-color: #fff; background: rgba(220, 60, 60, .16); color: #fff; opacity: 1; }   /* StediMail's red, white outline */
-.column h2 .add-task-btn.plus:hover { background: rgba(220, 60, 60, .28); }
+.column h2 .add-task-btn.plus { border: 1px solid rgba(220, 60, 60, .45); background: rgba(220, 60, 60, .16); color: var(--bar-text); opacity: 1; }   /* like the red Downloads button */
+.column h2 .add-task-btn.plus:hover { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
 /* Tasks shown in the mail columns: light red cards */
 /* Tasks in the mail columns: the normal card with a heavy outline (thicker than a selected card's), big TASK,
    bell and title, and the people after "CoLab:" (Paul, 2026-11-08) */

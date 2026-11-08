@@ -161,7 +161,7 @@ function initAuth() {
       state.renewing = false;
       if (resp.error) { if (!quiet) toast('Sign-in failed: ' + resp.error); return; }
       const wasSignedOut = !state.token;
-      setToken(resp.access_token, resp.expires_in);
+      setToken(resp.access_token, resp.expires_in, resp.scope);
       $('#banner').hidden = true;
       if (!quiet) start();
       else if (wasSignedOut) loadBoard();
@@ -173,10 +173,12 @@ function initAuth() {
   });
 }
 
-function setToken(token, expiresIn) {
+// granted: every scope the token carries (Gmail's plus any given before, e.g. StediTask's Drive folder).
+function setToken(token, expiresIn, granted = '') {
   state.token = token;
   state.tokenExp = Date.now() + (Number(expiresIn) - 60) * 1000;
-  try { sessionStorage.setItem('token', JSON.stringify({ token, exp: state.tokenExp, scope: SCOPE })); } catch {}
+  state.tokenScopes = granted || '';
+  try { sessionStorage.setItem('token', JSON.stringify({ token, exp: state.tokenExp, scope: SCOPE, granted: state.tokenScopes })); } catch {}
 }
 
 function restoreToken() {
@@ -186,6 +188,7 @@ function restoreToken() {
     if (saved && saved.exp > Date.now() && saved.scope === SCOPE) {
       state.token = saved.token;
       state.tokenExp = saved.exp;
+      state.tokenScopes = saved.granted || '';
       return true;
     }
   } catch {}
@@ -4491,7 +4494,42 @@ function upgradeTasks(d) {
   return d;
 }
 
-function tasksSignIn() { return scopedSignIn(tasksAuth, TASKS_SCOPE); }
+// StediTask's Drive folder (Paul, 2026-11-08: no Google window every time the tasks open). Once it's been
+// allowed, Google adds it to the Gmail sign-in, which lasts across reloads and renews quietly, so that is
+// used. Only the first time does a Google window ask; its sign-in then also becomes the Gmail one.
+function tasksSignIn() {
+  if (state.token && Date.now() < state.tokenExp && (state.tokenScopes || '').split(' ').includes(TASKS_SCOPE)) {
+    tasksAuth.token = state.token;
+    tasksAuth.exp = state.tokenExp;
+    return Promise.resolve(state.token);
+  }
+  if (tasksAuth.token && Date.now() < tasksAuth.exp) return Promise.resolve(tasksAuth.token);
+  if (tasksAuth.pending) return tasksAuth.pending;
+  tasksAuth.pending = new Promise((resolve, reject) => {
+    google.accounts.oauth2.initTokenClient({
+      client_id: settings.clientId,
+      scope: SCOPE + ' ' + TASKS_SCOPE,
+      include_granted_scopes: true,
+      callback: (resp) => {
+        if (resp.error || !google.accounts.oauth2.hasGrantedAllScopes(resp, TASKS_SCOPE)) {
+          reject(new Error('Google Drive permission wasn\'t given'));
+          return;
+        }
+        setToken(resp.access_token, resp.expires_in, resp.scope);
+        tasksAuth.token = resp.access_token;
+        tasksAuth.exp = state.tokenExp;
+        resolve(resp.access_token);
+      },
+      error_callback: (err) => reject(new Error(err.type === 'popup_closed'
+        ? 'The Google window was closed' : 'Google Drive sign-in failed: ' + err.type)),
+    }).requestAccessToken({ login_hint: state.me, prompt: '' });
+  }).finally(() => { tasksAuth.pending = null; });
+  return tasksAuth.pending;
+}
+
+// Is StediTask's Drive folder usable without asking (so saving never pops up a Google window by itself)?
+const tasksTokenReady = () => (state.token && Date.now() < state.tokenExp && (state.tokenScopes || '').split(' ').includes(TASKS_SCOPE))
+  || (tasksAuth.token && Date.now() < tasksAuth.exp);
 
 async function tasksFetch(url, opts = {}) {
   const token = await tasksSignIn();
@@ -4566,7 +4604,7 @@ function saveTasks(what = 'change') {
   store.set('tasks', tasksData());
   store.set('tasksDirty', true);
   if (!tasks.synced) return;   // pullTasks() sends it once connected
-  const ready = Date.now() < tasksAuth.exp ? Promise.resolve() : tasksSignIn();
+  const ready = tasksTokenReady() ? Promise.resolve() : tasksSignIn();
   ready.then(() => {
     clearTimeout(tasks.saveTimer);
     tasks.saveTimer = setTimeout(() => pushTasks().catch((e) => tasksOffline(e.message)), TASKS_SAVE_MS);
