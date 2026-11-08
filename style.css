@@ -682,10 +682,10 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .card.task-card .colab-list { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .card.task-card .task-finish { position: static; transform: none; flex: none; }
 .card.task-card.finished .task-head { text-decoration: line-through; }
-.card.task.task-card { padding-right: .85rem; }
+.card.task.task-card { padding-right: .85rem; min-height: 0; }   /* no old 52px minimum: a folded card is even top and bottom */ 
 /* A folded task: one line, same dark background and outline as an open one (Paul, 2026-11-08) */
 .card.task-card.collapsed { padding-top: .3rem; padding-bottom: .3rem; }
-.card.task-card.collapsed .top { gap: .5rem; }
+.card.task-card.collapsed .top { gap: .5rem; min-height: 30px; }   /* as tall as StediTask's ✓, so both folded cards match */
 .card.task-card.collapsed .task-head { font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card.task-card.collapsed .task-bell { font-size: 1.05rem; }
 .card.task-card.collapsed .task-when { margin: 0; flex: none; font-size: .85rem; }
