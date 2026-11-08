@@ -466,11 +466,13 @@ body.reader-resizing, body.reader-resizing * { cursor: ew-resize !important; use
 .reader-head button, .reader-head .icon-btn { color: var(--bar-text); background: transparent; border-color: transparent; }
 .reader-head button:hover:not(:disabled) { background: rgba(127, 127, 127, .22); }
 .reader-head .esc-hint { color: var(--bar-text); border: none; padding: 0; opacity: .9; }
-/* Full width: a big arrow with its small word on top (Paul, 2026-11-05) */
-.reader-head .reader-widen { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
-  width: 56px; min-height: 52px; padding: 0; opacity: 1; }
-.reader-head .reader-widen .widen-word { font-size: .65rem; font-weight: 600; line-height: 1; }
-.reader-head .reader-widen svg { display: block; width: 46px; height: 46px; margin: -8px 0; }
+/* Full width: the same box as Close, the arrow above its word like the X above ESC (Paul, 2026-11-08) */
+.reader-head .reader-widen { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .2rem;
+  min-height: 52px; min-width: 52px; width: auto; padding: .25rem .5rem; border: 1.5px solid var(--bar-muted); border-radius: 8px;
+  line-height: 1; opacity: 1; }
+.reader-head .reader-widen svg { display: block; width: 34px; height: 34px; margin: -7px 0; }   /* the arrow fills only the middle of its box */
+.reader-head .reader-widen:hover:not(:disabled) { background: rgba(127, 127, 127, .22); border-color: var(--bar-text); }
+.reader-head .reader-widen:hover .esc-hint { opacity: 1; }
 /* Close: an X above the ESC key, one button with no visible surround of its own */
 .reader-head .reader-close { flex: none; display: flex; flex-direction: column; align-items: center; gap: .2rem;
   min-height: 52px; min-width: 52px; justify-content: center; padding: .25rem .5rem; border: 1.5px solid var(--bar-muted); border-radius: 8px; line-height: 1; }

@@ -3696,7 +3696,7 @@ function widenButton() {
     else { store.set('readerWidthBefore', settings.readerWidth); setReaderWidth(readerMax()); }
   });
   b.classList.add('reader-widen');
-  b.prepend(el('span', { class: 'widen-word' }, wide ? 'Narrow' : 'Full'));
+  b.append(el('span', { class: 'widen-word esc-hint' }, wide ? 'NARROW' : 'FULL'));   // under the arrow, like ESC under the X
   return b;
 }
 
