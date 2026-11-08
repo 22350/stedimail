@@ -2417,8 +2417,9 @@ const UNDO_MAX = 30;
 function renderUndo() {
   const b = $('#btn-undo');
   if (!b) return;
-  // In StediTask the buttons work on the task steps; in the mail, on the mail changes.
-  const last = tasks.open ? taskHistory.undo[taskHistory.undo.length - 1] : undoStack[undoStack.length - 1];
+  // In StediTask the buttons work on the task steps; in the mail, on whichever came last, a mail change or a
+  // task change made there (a task card deleted from a mail column, say).
+  const last = tasks.open ? taskHistory.undo[taskHistory.undo.length - 1] : latestUndo();
   b.disabled = !last;
   b.title = last ? `Undo: ${last.what} (Ctrl+Z)` : 'Nothing to undo';
   b.setAttribute('aria-label', last ? `Undo: ${last.what}` : 'Undo (nothing to undo)');
@@ -2436,8 +2437,15 @@ async function runUndo(entry) {
   try { await entry.run(); toast(`Undone: ${entry.what}`); }
   catch (e) { if (!(e instanceof AuthError)) toast('Undo failed: ' + e.message); }
 }
+function latestUndo() {
+  const mail = undoStack[undoStack.length - 1], task = taskHistory.undo[taskHistory.undo.length - 1];
+  return !task || (mail && (mail.at || 0) >= (task.at || 0)) ? mail : task;
+}
+
 function undoLast() {
   if (tasks.open) { taskUndo(); return; }
+  const latest = latestUndo();
+  if (latest && latest === taskHistory.undo[taskHistory.undo.length - 1]) { taskUndo(); return; }
   const last = undoStack[undoStack.length - 1];
   if (last) runUndo(last); else toast('Nothing to undo.');
 }
@@ -2446,7 +2454,7 @@ function toast(msg, action) {
   const box = $('#toast');
   box.replaceChildren(el('span', {}, msg));
   if (action) {
-    const entry = action.label === 'Undo' && action.stack !== false ? { what: msg, run: action.run } : null;
+    const entry = action.label === 'Undo' && action.stack !== false ? { what: msg, run: action.run, at: Date.now() } : null;
     if (entry) {
       undoStack.push(entry);
       undoStack.splice(0, Math.max(0, undoStack.length - UNDO_MAX));
@@ -4444,7 +4452,7 @@ function recordTask(what) {
   const before = taskHistory.base, after = taskSnap();
   taskHistory.base = after;
   if (!before || (before.data === after.data && sameCols(before, after))) return;
-  taskHistory.undo.push({ what, before, after, cols: !sameCols(before, after) });
+  taskHistory.undo.push({ what, before, after, cols: !sameCols(before, after), at: Date.now() });
   taskHistory.undo.splice(0, Math.max(0, taskHistory.undo.length - TASK_HISTORY_MAX));
   taskHistory.redo = [];
   renderUndo();
@@ -5213,7 +5221,7 @@ function insertTaskByDate(t) {
 
 // A question with several answers, e.g. [['keep', 'Keep editing'], ['save', 'Save', 'primary']]. Esc or a click
 // outside it answers with the first one.
-function askChoice(message, answers) {
+function askChoice(message, answers, focus = answers.length - 1) {
   return new Promise((resolve) => {
     const dlg = el('dialog', { class: 'ask', 'aria-label': message });
     let done = false;
@@ -5228,7 +5236,7 @@ function askChoice(message, answers) {
     dlg.addEventListener('click', (e) => { if (e.target === dlg) finish(answers[0][0]); });
     document.body.append(dlg);
     dlg.showModal();
-    buttons[buttons.length - 1].focus();
+    buttons[focus].focus();
   });
 }
 
@@ -5244,11 +5252,10 @@ function openTaskDialog(opts = {}) {
   const peopleBox = el('div', {}, people);
   const due = el('input', { type: 'date', value: t.due || '', 'aria-label': 'Date' });
   const time = el('input', { type: 'time', value: t.dueTime || '', 'aria-label': 'Time' });
-  const clearDue = el('button', { type: 'button' }, 'No date');
-  clearDue.addEventListener('click', () => { due.value = ''; time.value = ''; alarm.value = ''; });
   const alarm = el('select', { 'aria-label': 'Alarm' }, TASK_ALARMS.map(([v, label]) =>
     el('option', { value: v == null ? '' : String(v), selected: (t.alarm ?? null) === v ? '' : null }, label)));
   const start = el('input', { type: 'date', value: t.start || '', 'aria-label': 'Start date' });
+  const inMailBox = el('input', { type: 'checkbox', checked: t.hideInMail ? null : '' });   // brings back one taken out of the mail
   // Adding: which project (from All projects or a mail column whose project you may want to change).
   const list = taskProjects();
   const project = editing ? null : el('select', { 'aria-label': 'Project' }, list.map((p) =>
@@ -5262,18 +5269,20 @@ function openTaskDialog(opts = {}) {
     el('label', {}, ['What is the task?', title]),
     el('label', {}, ['Outline', notes]),
     el('div', { class: 'field' }, [el('span', {}, 'People'), peopleBox]),
-    el('div', { class: 'field' }, [el('span', {}, 'When'), el('div', { class: 'color-row' }, [due, time, clearDue])]),
+    // Empty means no due date; no button needed for it (Paul, 2026-11-08).
+    el('div', { class: 'field' }, [el('span', {}, 'When (leave empty for no due date)'), el('div', { class: 'color-row' }, [due, time])]),
     el('label', {}, ['Alarm', alarm]),
     project ? el('label', {}, ['Project', project]) : null,
     editing ? el('div', { class: 'field' }, [el('span', {}, 'Start (for the Timeline)'), start]) : null,
+    editing ? el('label', { class: 'check' }, [inMailBox, 'Show in the StediMail column']) : null,
     msg,
     el('div', { class: 'ask-buttons' }, [del, el('div', { class: 'spacer' }), cancel, save]),
   ]);
   const finish = () => { dlg.close(); dlg.remove(); };
   cancel.addEventListener('click', finish);
   // Clicking outside the task (or Esc) closes it; with changes made, it asks first (Paul, 2026-11-08).
-  const fields = [title, notes, people, due, time, alarm, start, project].filter(Boolean);
-  const snapshot = () => fields.map((f) => f.value).join('\u0001');
+  const fields = [title, notes, people, due, time, alarm, start, project, editing ? inMailBox : null].filter(Boolean);
+  const snapshot = () => fields.map((f) => (f.type === 'checkbox' ? String(f.checked) : f.value)).join('\u0001');
   const opened = snapshot();
   let asking = false;
   const leave = async () => {
@@ -5301,7 +5310,7 @@ function openTaskDialog(opts = {}) {
       dueTime: due.value ? time.value : '', alarm: a };
     finish();
     if (editing) {
-      Object.assign(editing, fields, { start: start.value });
+      Object.assign(editing, fields, { start: start.value, hideInMail: !inMailBox.checked });
       saveTasks(`Edited “${name}”`);
     } else {
       const proj = project.value;
@@ -5357,12 +5366,32 @@ function mailColumnTasks(col) {
   if (!d) return [];
   const name = col.inbox ? GENERAL : col.name;
   if ((d.hidden || []).includes(name)) return [];
-  return d.items.filter((t) => t.project === name && !isFinishedTask(t));
+  return d.items.filter((t) => t.project === name && !isFinishedTask(t) && !t.hideInMail);
 }
 
 // One task card for the mail columns and StediTask (Paul, 2026-11-08): the task's name big on top with the
 // bell and due date, its description below, the people after "CoLab:" one per line, and Delete on the last line.
 // StediTask's cards add the ✓ (finished) at the top right.
+// The red ✕ asks first: take the card out of the mail column only (the task stays in StediTask), delete the
+// task everywhere, or cancel (Paul, 2026-11-08). A task already out of the mail just asks to delete.
+async function askDeleteTask(id) {
+  const t = findTask(id);
+  const inMail = !t.hideInMail && !isFinishedTask(t) && !(tasksData().hidden || []).includes(t.project)
+    && (t.project === GENERAL || settings.columns.includes(t.project));   // its card shows in a mail column
+  const choice = await askChoice(`Delete “${t.title}”?`, [
+    ['cancel', 'Cancel'],
+    ...(inMail ? [['mail', 'From StediMail only']] : []),
+    ['all', inMail ? 'From StediMail and StediTask' : 'Delete it', 'danger'],
+  ], 0);   // Cancel is the one Enter presses
+  if (choice === 'all') deleteTask(id);
+  else if (choice === 'mail') {
+    t.hideInMail = true;
+    saveTasks(`Took “${t.title}” out of StediMail`);
+    if (tasks.open) renderTasks(); else render();
+    taskToast(`“${t.title}” is now in StediTask only`);
+  }
+}
+
 function deleteTask(id) {
   const items = tasksData().items;
   const t = findTask(id);
@@ -5400,7 +5429,7 @@ function taskCardParts(t, { finished = false, finish = null, tagColor = null } =
       t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, taskWhenText(t)) : null, finish])];
   }
   const del = el('button', { type: 'button', class: 'task-delete', title: 'Delete task', 'aria-label': `Delete task: ${t.title}` }, xIcon());   // a square red ✕ (Paul, 2026-11-08)
-  del.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(t.id); });
+  del.addEventListener('click', (e) => { e.stopPropagation(); askDeleteTask(t.id); });
   const desc = t.notes ? el('div', { class: 'task-desc' }, t.notes) : null;
   const people = t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
     el('span', { class: 'colab-list' }, t.people.map((p) => el('span', {}, p.name ? `${p.name} <${p.addr}>` : p.addr)))]) : null;
