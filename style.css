@@ -708,6 +708,17 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .card.task-card.collapsed .task-finish { width: 30px; min-height: 30px; height: 30px; font-size: 1rem; }   /* the ✓ is in the top row now, not over the right edge */
 .task-people { font-size: .85rem; color: var(--muted); margin-top: .2rem; }
 dialog.task-edit h2 { margin: 0 0 .8rem; font-size: 1.2rem; }
+/* The Outline: a small microphone in its corner, its links clickable under it (Paul, 2026-11-08) */
+dialog.task-edit .outline-wrap { position: relative; }
+dialog.task-edit .outline-wrap textarea { padding-right: 2.8rem; }
+.dictate-small { position: absolute; right: 6px; bottom: 8px; width: 30px; height: 30px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  border-radius: 8px; background: transparent; border: 1px solid var(--border); color: var(--muted); }
+.dictate-small svg { width: 18px; height: 18px; fill: currentColor; }
+.dictate-small:hover { color: var(--text); border-color: var(--text); }
+.dictate-small.listening, .dictate-small.listening:hover { background: #d93025; border-color: #d93025; color: #fff; }
+.outline-links { display: flex; flex-wrap: wrap; gap: .3rem .9rem; font-weight: normal; font-size: .9rem; }
+.outline-links:empty { display: none; }
+a.live-link { color: var(--accent); text-decoration: underline; overflow-wrap: anywhere; cursor: pointer; }
 dialog.task-edit select { min-height: 40px; font: inherit; padding: 0 .6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
 dialog.task-edit .error:empty { display: none; }
 /* StediTask: Board / Timeline where Compose and Download are in the mail (Paul, 2026-11-08) */

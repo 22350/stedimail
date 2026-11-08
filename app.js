@@ -1929,6 +1929,13 @@ async function spamThread(id) {
   }
 }
 
+// A card's floating buttons act on all the checked emails when that card is one of them (as dragging does),
+// so e.g. Delete on any card of a fully checked Promotions closes it (Paul, 2026-11-08).
+function forSelection(id, action, one) {
+  if (state.selectAll || (state.selected.has(id) && state.selected.size > 1)) runBulk(action);
+  else one();
+}
+
 // The trash buttons ask first (Paul, 2026-11-08). The Delete key already asks by needing a second press.
 async function confirmTrash(id) {
   const t = state.threads.get(id);
@@ -1942,6 +1949,7 @@ async function trashThread(id, said = 'Moved to Trash') {
   try {
     await api(`/threads/${id}/trash`, { method: 'POST' });
     state.threads.delete(id);
+    if (state.search && !state.search.more && !state.search.ids.some((x) => state.threads.has(x))) clearSearch();   // its last email: the folder closes
     assign(columns());
     render();
     if (state.openId === id) closeReader();
@@ -2402,6 +2410,60 @@ function onDoubleClick(node, run, skip = 'button, input') {
     const now = Date.now();
     if (now - last <= DOUBLE_CLICK_MS) { last = 0; run(e); } else last = now;
   });
+}
+
+// Web addresses in plain text as live links that open in a new tab; a click on one doesn't open the card
+// it's on (Paul, 2026-11-08).
+function linkify(text) {
+  const out = [];
+  const re = /\b(?:https?:\/\/|www\.)[^\s<>"]+/gi;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    let url = m[0].replace(/[.,;:!?)\]'"]+$/, '');
+    if (m.index > last) out.push(document.createTextNode(text.slice(last, m.index)));
+    const a = el('a', { href: /^www\./i.test(url) ? 'https://' + url : url, target: '_blank', rel: 'noopener noreferrer', class: 'live-link' }, url);
+    a.addEventListener('click', (e) => e.stopPropagation());
+    out.push(a);
+    last = m.index + url.length;
+    re.lastIndex = last;
+  }
+  if (last < text.length) out.push(document.createTextNode(text.slice(last)));
+  return out;
+}
+
+// A small microphone for a plain text box (the task's Outline): the browser's speech recognition types at
+// the cursor, like dictating a reply. Stops on a click or when it hears silence. No button without it.
+function textDictation(box) {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) return null;
+  const label = 'Dictate (your browser sends your voice to its speech service)';
+  const b = el('button', { type: 'button', class: 'dictate-small', title: label, 'aria-label': label, 'aria-pressed': 'false' }, icon('mic'));
+  let rec = null;
+  const on = (yes) => { b.classList.toggle('listening', yes); b.setAttribute('aria-pressed', String(yes)); };
+  b.addEventListener('mousedown', (e) => e.preventDefault());   // keep the cursor where it is
+  b.addEventListener('click', () => {
+    if (rec) { rec.stop(); return; }
+    rec = new Recognition();
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.lang = navigator.language;
+    rec.onresult = (e) => {
+      if (!box.isConnected) { rec?.abort(); return; }
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (!e.results[i].isFinal) continue;
+        const said = e.results[i][0].transcript.trim();
+        const at = box.selectionStart ?? box.value.length, end = box.selectionEnd ?? at;
+        const pre = box.value.slice(0, at), post = box.value.slice(end);
+        const text = (pre && !/\s$/.test(pre) ? ' ' : '') + said + (post && !/^\s/.test(post) ? ' ' : '');
+        box.setRangeText(text, at, end, 'end');
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    };
+    rec.onerror = (e) => { if (e.error === 'not-allowed') toast('Dictation needs permission to use the microphone'); else if (e.error === 'audio-capture') toast('No microphone found'); };
+    rec.onend = () => { rec = null; on(false); };
+    try { box.focus(); rec.start(); on(true); } catch (e) { rec = null; toast('Could not start dictation: ' + e.message); }
+  });
+  return b;
 }
 
 // The ✕ in the boxed buttons (column close, task delete, project close), drawn so every one is the same size
@@ -2969,12 +3031,12 @@ function renderCard(t, colIdx) {
     el('div', { class: 'card-actions' }, [
       iconButton('Color', 'palette', (b) => openColorPicker(b, t.id)),
       iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, t.id)),
-      iconButton('Archive', 'archive', () => archiveThread(t.id)),
-      iconButton('Report spam', 'spam', () => spamThread(t.id)),
-      iconButton('Delete', 'trash', () => confirmTrash(t.id)),
+      iconButton('Archive', 'archive', () => forSelection(t.id, 'archive', () => archiveThread(t.id))),
+      iconButton('Report spam', 'spam', () => forSelection(t.id, 'spam', () => spamThread(t.id))),
+      iconButton('Delete', 'trash', () => forSelection(t.id, 'trash', () => confirmTrash(t.id))),
       t.unread
-        ? iconButton('Mark as read', 'read', () => toggleRead(t.id))
-        : iconButton('Mark as unread', 'unread', () => toggleRead(t.id)),
+        ? iconButton('Mark as read', 'read', () => forSelection(t.id, 'read', () => toggleRead(t.id)))
+        : iconButton('Mark as unread', 'unread', () => forSelection(t.id, 'unread', () => toggleRead(t.id))),
     ]),
   ]);
   card.addEventListener('dragover', (e) => {
@@ -5321,6 +5383,11 @@ function openTaskDialog(opts = {}) {
   const title = el('input', { value: t.title, 'aria-label': 'What is the task?', placeholder: 'What is the task?' });
   const notes = el('textarea', { rows: '3', placeholder: 'Outline: what needs doing', 'aria-label': 'Outline' });
   notes.value = t.notes || '';
+  // The outline's links, clickable under the box (a text box can't hold live links) (Paul, 2026-11-08).
+  const outlineLinks = el('div', { class: 'outline-links' });
+  const showLinks = () => outlineLinks.replaceChildren(...linkify(notes.value).filter((n) => n.nodeName === 'A'));
+  notes.addEventListener('input', showLinks);
+  showLinks();
   const people = el('input', { placeholder: 'Anyone whose email goes with it', autocomplete: 'off', 'aria-label': 'People' });
   people.value = (t.people || []).map((p) => (p.name ? `${p.name} <${p.addr}>` : p.addr)).join(', ') + ((t.people || []).length ? ', ' : '');
   const peopleBox = el('div', {}, people);
@@ -5341,7 +5408,7 @@ function openTaskDialog(opts = {}) {
   const dlg = el('dialog', { class: 'ask task-edit', 'aria-label': editing ? 'Edit task' : 'New task' }, [
     el('h2', {}, editing ? 'Task' : 'New task'),
     el('label', {}, ['What is the task?', title]),
-    el('label', {}, ['Outline', notes]),
+    el('div', { class: 'field' }, [el('span', {}, 'Outline'), el('div', { class: 'outline-wrap' }, [notes, textDictation(notes)]), outlineLinks]),
     el('div', { class: 'field' }, [el('span', {}, 'People'), peopleBox]),
     // Empty means no due date; no button needed for it (Paul, 2026-11-08).
     el('div', { class: 'field' }, [el('span', {}, 'When (leave empty for no due date)'), el('div', { class: 'color-row' }, [due, time])]),
@@ -5508,7 +5575,7 @@ function taskCardParts(t, { finished = false, finish = null, tagColor = null } =
     return [el('div', { class: 'top' }, [el('span', { class: 'task-head task-title' }, t.title), t.alarm != null ? bellIcon() : null,
       t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, taskWhenText(t)) : null, finish, del])];
   }
-  const desc = t.notes ? el('div', { class: 'task-desc' }, t.notes) : null;
+  const desc = t.notes ? el('div', { class: 'task-desc' }, linkify(t.notes)) : null;
   const people = t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
     el('span', { class: 'colab-list' }, t.people.map((p) => el('span', {}, p.name ? `${p.name} <${p.addr}>` : p.addr)))]) : null;
   const head = el('span', { class: 'task-head task-title' }, t.title);
