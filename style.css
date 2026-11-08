@@ -636,8 +636,24 @@ body:not(.tasks-on) #tasks, body:not(.tasks-on) #tasks-note { display: none !imp
 body.tasks-on #board, body.tasks-on #sidebar, body.tasks-on #bulk,
 body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picker, body.tasks-on #btn-menu { display: none !important; }
 .tasks-note { gap: 1rem; }
+/* With the tasks on, the bar says StediTask (Paul, 2026-11-08) */
+body:not(.tasks-on) .bar h1 .task-logo, body.tasks-on .bar h1 .mail-logo { display: none; }
+/* Project buttons on top, like the StediTask window; the chosen project's columns below */
+.tasks-board { flex-direction: column; gap: .9rem; }
+.task-tabs { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; flex: none; }
+.task-tab { --tab: #808a96; display: inline-flex; align-items: center; gap: .6rem; min-height: 46px; padding: 0 1.1rem;
+  border: 2px solid var(--tab); border-radius: 10px; background: transparent; color: var(--tab); font-weight: 700; font-size: 1.05rem; }
+.task-tab .count { font-size: .8rem; padding: .05rem .5rem; border-radius: 999px; background: rgba(127,127,127,.25); color: var(--text); }
+.task-tab[aria-pressed="true"] { background: var(--tab); color: #fff; }
+.task-tab[aria-pressed="true"] .count { background: rgba(255,255,255,.3); color: #fff; }
+.task-tab:hover:not(:disabled) { filter: brightness(1.15); }
+.task-tab.add-project { --tab: var(--muted); border-style: dashed; font-weight: 600; margin-left: .8rem; }
+.task-tab-input { min-height: 46px; min-width: 240px; margin-left: .8rem; }
+.task-cols { flex: 1; min-height: 0; display: flex; gap: 1rem; overflow-x: auto; }
+.task-empty { padding: 1rem 0; }
+.task-col h2 .col-name { background: transparent; border: 0; padding: 0; font: inherit; color: inherit; cursor: text; text-align: left; }
+.task-col h2 input { font: inherit; min-width: 0; flex: 1; }
 .task-col .cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; padding: 0 .6rem .4rem; }
-.task-col .done-cards { flex: none; max-height: 40%; }
 .card.task { padding-right: 3.6rem; min-height: 52px; }
 .card.task.finished { opacity: .6; }
 .card.task.finished .task-title { text-decoration: line-through; }
@@ -652,10 +668,8 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .task-col .add-task, .task-col .task-new { margin: .3rem .6rem .6rem; width: calc(100% - 1.2rem); }
 .add-task { text-align: left; color: var(--muted); background: transparent; border-style: dashed; }
 .add-task:hover:not(:disabled) { color: var(--text); }
-.show-done { margin: 0 .6rem .6rem; text-align: left; background: transparent; border-color: transparent; color: var(--muted); }
 .add-task-col { flex: 0 0 220px; }
 .add-task-col .add-task, .add-task-col input { width: 100%; }
-.task-col.mail-col h2::before { content: '✉'; margin-left: -1.3rem; opacity: .6; font-weight: normal; }
 dialog.task-edit { max-width: 520px; }
 dialog.task-edit label, dialog.task-edit .field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .8rem; font-weight: 600; }
 dialog.task-edit textarea { resize: vertical; }
@@ -665,7 +679,9 @@ dialog.task-edit .spacer { flex: 1; }
 .task-col h2 { min-height: 44px; }
 /* Phones: one task column per screen, swipe sideways for the next */
 @media (max-width: 640px) {
-  .tasks-board { gap: .75rem; overflow-x: auto; scroll-snap-type: x mandatory; }
+  .task-cols { gap: .75rem; overflow-x: auto; scroll-snap-type: x mandatory; }
   .tasks-board .column:not(.phone-shown) { display: flex !important; }
-  .tasks-board .column, .tasks-board .add-task-col { flex: 0 0 calc(100% - 1.5rem) !important; scroll-snap-align: center; }
+  .task-cols .column, .task-cols .add-task-col { flex: 0 0 calc(100% - 1.5rem) !important; scroll-snap-align: center; }
+  .task-tabs { flex-wrap: nowrap; overflow-x: auto; }
+  .task-tab { flex: none; }
 }

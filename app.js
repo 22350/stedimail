@@ -4304,7 +4304,7 @@ async function applySettings({ inboxName, cols, clientId }) {
     if (!c.orig || c.orig === c.name) continue;
     try {
       await renameLabel(c.orig, c.name);
-      renameTaskColumn(c.orig, c.name);
+      renameTaskProject(c.orig, c.name);
       store.set('stediTaskRenames', [...store.get('stediTaskRenames', []), { from: c.orig, to: c.name }]);
     } catch (e) {
       if (!(e instanceof AuthError)) toast(`Could not rename “${c.orig}”: ${e.message}`);
@@ -4371,36 +4371,44 @@ function disarmDelete() {
 }
 
 // ---------- tasks (StediTask inside StediMail) ----------
-// A task board next to the mail, opened with the checklist button. Its columns are the projects, and every
-// project is a mail column: one made in either place shows in both, and renames follow. A project whose mail
-// column is removed while it still has tasks stays here as a task-only column, so nothing is lost. Saved as one file in the hidden app folder
+// A task board next to the mail, opened with the checklist button, laid out like the StediTask window
+// (Paul, 2026-11-08): a row of project buttons on top, one per mail column (not the Inbox) plus projects made
+// here only, and below them the chosen project's own columns (To do / Doing / Finished to start; the last one
+// is where finished tasks go). A project whose mail column is removed keeps its tasks. Saved as one file in the hidden app folder
 // of the person's Google Drive (drive.appdata: StediMail can't see their other files), so it follows them to
 // other computers; the browser keeps a copy for opening fast.
 const TASKS_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const TASKS_FILE = 'steditask.json';
 const TASKS_SAVE_MS = 800;
 const TASK_DRAG = 'application/x-steditask';
+const TASK_START_COLS = ['To do', 'Doing', 'Finished'];
 const tasksAuth = { token: null, exp: 0, pending: null };
 const tasks = {
   open: false,
-  data: null,         // { columns: [task-only column names], items: [{ id, title, notes, due, col, done, doneAt }] }
-  showDone: new Set(), // columns whose finished tasks are shown
+  data: null,         // { projects: [{ name, columns: [...], own }], items: [{ id, title, notes, due, project, col }] }
   saveTimer: null,
   synced: false,       // read from Google this session
 };
 
 function tasksData() {
-  if (!tasks.data) tasks.data = store.get('tasks', null) || { columns: [], items: [] };
-  return tasks.data;
+  if (!tasks.data) tasks.data = store.get('tasks', null) || { projects: [], items: [] };
+  return upgradeTasks(tasks.data);
 }
 
-function taskColumns() {
-  const d = tasksData();
-  const mail = columns().map((c) => c.name);
-  const own = d.columns.filter((n) => !mail.includes(n));
-  for (const t of d.items) if (!mail.includes(t.col) && !own.includes(t.col)) own.push(t.col);
-  d.columns = own;
-  return [...mail.map((name) => ({ name, mail: true })), ...own.map((name) => ({ name }))];
+// Before 2026-11-08 each project was a single column (its name in t.col) with a done flag.
+function upgradeTasks(d) {
+  if (!d.projects) {
+    d.projects = (d.columns || []).map((name) => ({ name, columns: [...TASK_START_COLS], own: true }));
+    for (const t of d.items) {
+      if (t.project) continue;
+      t.project = t.col;
+      t.col = t.done ? TASK_START_COLS[2] : TASK_START_COLS[0];
+      delete t.done;
+      delete t.doneAt;
+    }
+  }
+  delete d.columns;
+  return d;
 }
 
 function tasksSignIn() { return scopedSignIn(tasksAuth, TASKS_SCOPE); }
@@ -4426,10 +4434,10 @@ async function pullTasks() {
   try {
     const id = await tasksFileId();
     if (store.get('tasksDirty', false) || !id) {
-      if (id || tasksData().items.length || tasksData().columns.length) await pushTasks();
+      if (id || tasksData().items.length || tasksData().projects.length) await pushTasks();
     } else {
       const remote = await (await tasksFetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`)).json();
-      tasks.data = { columns: remote.columns || [], items: remote.items || [] };
+      tasks.data = upgradeTasks({ projects: remote.projects, columns: remote.columns || [], items: remote.items || [] });
       store.set('tasks', tasks.data);
     }
     tasks.synced = true;
@@ -4498,44 +4506,131 @@ function closeTasks() {
   $('#btn-tasks').title = 'Tasks';
 }
 
-function renameTaskColumn(from, to) {
+function findTask(id) { return tasksData().items.find((t) => t.id === id); }
+
+// A mail column renamed in Settings: its project and tasks follow.
+function renameTaskProject(from, to) {
   const d = tasksData();
   let changed = false;
-  for (const t of d.items) if (t.col === from) { t.col = to; changed = true; }
+  for (const t of d.items) if (t.project === from) { t.project = to; changed = true; }
+  const p = d.projects.find((x) => x.name === from);
+  if (p && !d.projects.some((x) => x.name === to)) { p.name = to; changed = true; }
+  if (store.get('taskProject', '') === from) store.set('taskProject', to);
   if (changed) saveTasks();
 }
 
-function findTask(id) { return tasksData().items.find((t) => t.id === id); }
+// One project per mail column (not the Inbox), then the ones made here only, then any that lost their mail
+// column but still have tasks.
+function taskProjects() {
+  const d = tasksData();
+  const mail = settings.columns;
+  const list = mail.map((name) => ({ name, mail: true }));
+  const has = (name) => list.some((x) => x.name === name);
+  for (const p of d.projects) if (!has(p.name) && (p.own || d.items.some((t) => t.project === p.name))) list.push({ name: p.name });
+  for (const t of d.items) if (!has(t.project)) list.push({ name: t.project });
+  return list;
+}
+
+// A project's own columns; made with the starting ones the first time it's needed.
+function taskProject(name) {
+  const d = tasksData();
+  let p = d.projects.find((x) => x.name === name);
+  if (!p) { p = { name, columns: [...TASK_START_COLS] }; d.projects.push(p); }
+  if (!p.columns.length) p.columns.push(...TASK_START_COLS);
+  return p;
+}
+
+function currentTaskProject(list = taskProjects()) {
+  return (list.find((p) => p.name === store.get('taskProject', '')) || list[0])?.name || null;
+}
+
+// The last column is where finished tasks go.
+function isFinishedTask(t) {
+  const cols = taskProject(t.project).columns;
+  return t.col === cols[cols.length - 1];
+}
 
 function renderTasks() {
   const box = $('#tasks');
   const scrolls = [...box.querySelectorAll('.cards')].map((c) => c.scrollTop);
-  box.replaceChildren(...taskColumns().map(renderTaskColumn), renderAddTaskColumn());
+  const list = taskProjects();
+  const cur = currentTaskProject(list);
+  const tabs = el('div', { class: 'task-tabs', role: 'group', 'aria-label': 'Projects' },
+    [...list.flatMap((p, i) => projectTab(p, i, p.name === cur)), renderAddProject()]);
+  const cols = cur
+    ? [...taskProject(cur).columns.map((c, i, all) => renderTaskColumn(cur, c, i === all.length - 1)), renderAddTaskColumn(cur)]
+    : [el('p', { class: 'hint task-empty' }, 'Each StediMail column is a project here. Add a column in StediMail, or a project with + New project.')];
+  box.replaceChildren(tabs, el('div', { class: 'task-cols' }, cols));
   box.querySelectorAll('.cards').forEach((c, i) => { c.scrollTop = scrolls[i] || 0; });
 }
 
-function renderTaskColumn(col) {
-  const items = tasksData().items.filter((t) => t.col === col.name);
-  const open = items.filter((t) => !t.done);
-  const done = items.filter((t) => t.done);
-  const remove = col.mail ? null : iconButton(`Remove column “${col.name}”`, null, () => removeTaskColumn(col.name), '✕');
-  const head = el('h2', {}, [col.name, el('span', { class: 'count' }, String(open.length)), remove]);
-  head.title = col.mail ? 'Also a mail column: rename or remove it in Settings' : 'Its mail column was removed; tasks only now';
-  const add = el('button', { type: 'button', class: 'add-task' }, '+ Add task');
-  add.addEventListener('click', () => addTaskBox(col.name, add));
-  const parts = [head, el('div', { class: 'cards' }, open.map(renderTask)), add];
-  if (done.length) {
-    const showing = tasks.showDone.has(col.name);
-    const toggle = el('button', { type: 'button', class: 'show-done', 'aria-expanded': String(showing) },
-      `${showing ? '▾' : '▸'} ${done.length} finished`);
-    toggle.addEventListener('click', () => {
-      tasks.showDone[showing ? 'delete' : 'add'](col.name);
+const TAB_COLORS = ['#3b82c4', '#9b59b6', '#c8643f', '#2a9d8f', '#b8860b', '#5d8f2f', '#c2417a', '#4b6bd6', '#808a96'];
+
+function projectTab(p, i, on) {
+  const d = tasksData();
+  const open = d.items.filter((t) => t.project === p.name && !isFinishedTask(t)).length;
+  const tab = el('button', { type: 'button', class: 'task-tab', 'aria-pressed': String(on),
+    title: p.mail ? 'Also a StediMail column' : 'StediTask only', style: `--tab: ${TAB_COLORS[i % TAB_COLORS.length]}` },
+  [p.name, el('span', { class: 'count' }, String(open))]);
+  tab.addEventListener('click', () => { store.set('taskProject', p.name); renderTasks(); });
+  if (!on || p.mail) return [tab];
+  const remove = iconButton(`Remove project “${p.name}”`, null, () => removeTaskProject(p.name), '✕');
+  return [tab, remove];
+}
+
+function renderAddProject() {
+  const add = el('button', { type: 'button', class: 'task-tab add-project' }, '+ New project');
+  add.addEventListener('click', () => {
+    const input = el('input', { class: 'task-tab-input', placeholder: 'Project name, then Enter', 'aria-label': 'New project name' });
+    add.replaceWith(input);
+    input.focus();
+    input.addEventListener('keydown', async (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); renderTasks(); return; }
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const name = input.value.trim().replace(/\//g, '-');
+      if (!name) { renderTasks(); return; }
+      if (name.toLowerCase() === settings.inboxName.toLowerCase() || taskProjects().some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+        toast(`There's already a “${name}” project.`); return;
+      }
+      input.disabled = true;   // its blur would otherwise redraw the board under the question
+      const mail = await askConfirm(`Also make a “${name}” column in StediMail?\n\nIts emails would sit in that column. With No, the project is in StediTask only.`,
+        'Yes, make a column', { cancelLabel: 'No, StediTask only', danger: false });
+      if (mail) addColumn(name);
+      const p = taskProject(name);
+      if (!settings.columns.includes(name)) p.own = true;   // No, or the mail column couldn't be made (nine at most)
+      store.set('taskProject', name);
+      saveTasks();
       renderTasks();
     });
-    parts.push(toggle);
-    if (showing) parts.push(el('div', { class: 'cards done-cards' }, done.map(renderTask)));
-  }
-  const node = el('section', { class: 'column task-col' + (col.mail ? ' mail-col' : '') }, parts);
+    input.addEventListener('blur', () => { if (!input.value.trim()) setTimeout(() => { if (input.isConnected) renderTasks(); }); });
+  });
+  return add;
+}
+
+async function removeTaskProject(name) {
+  const d = tasksData();
+  const inIt = d.items.filter((t) => t.project === name);
+  if (!await askConfirm(`Remove the “${name}” project${inIt.length ? ` and its ${inIt.length} task${inIt.length > 1 ? 's' : ''}` : ''}?`, 'Remove')) return;
+  const before = JSON.parse(JSON.stringify(d));
+  d.projects = d.projects.filter((p) => p.name !== name);
+  d.items = d.items.filter((t) => t.project !== name);
+  saveTasks();
+  renderTasks();
+  toast(`Removed project “${name}”`, { label: 'Undo', run: () => { tasks.data = before; saveTasks(); if (tasks.open) renderTasks(); } });
+}
+
+function renderTaskColumn(project, col, last) {
+  const p = taskProject(project);
+  const items = tasksData().items.filter((t) => t.project === project && t.col === col);
+  const name = el('button', { type: 'button', class: 'col-name', title: 'Rename this column' }, col);
+  name.addEventListener('click', () => renameColumnBox(project, col, name));
+  const remove = p.columns.length > 1 ? iconButton(`Remove column “${col}”`, null, () => removeTaskColumn(project, col), '✕') : null;
+  const head = el('h2', {}, [name, el('span', { class: 'count' }, String(items.length)), remove]);
+  const add = el('button', { type: 'button', class: 'add-task' }, '+ Add task');
+  add.addEventListener('click', () => addTaskBox(project, col, add));
+  const node = el('section', { class: 'column task-col' + (last ? ' finished-col' : ''), 'data-col': col },
+    [head, el('div', { class: 'cards' }, items.map((t) => renderTask(t, last))), add]);
   node.addEventListener('dragover', (e) => {
     if (!e.dataTransfer.types.includes(TASK_DRAG)) return;
     e.preventDefault();
@@ -4547,11 +4642,77 @@ function renderTaskColumn(col) {
     if (!id) return;
     e.preventDefault();
     node.classList.remove('drop');
-    const over = e.target.closest('.card.task:not(.finished)');
+    const over = e.target.closest('.card.task');
     const before = over && e.clientY < over.getBoundingClientRect().top + over.offsetHeight / 2;
-    moveTask(id, col.name, over?.dataset.task, before);
+    moveTask(id, col, over?.dataset.task, before);
   });
   return node;
+}
+
+function renameColumnBox(project, col, nameBtn) {
+  const p = taskProject(project);
+  const input = el('input', { value: col, 'aria-label': `Rename column ${col}` });
+  nameBtn.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = (save) => {
+    if (done) return;
+    done = true;
+    const to = input.value.trim();
+    if (save && to && to !== col) {
+      if (p.columns.some((c) => c.toLowerCase() === to.toLowerCase() && c !== col)) toast(`There's already a “${to}” column.`);
+      else {
+        p.columns[p.columns.indexOf(col)] = to;
+        for (const t of tasksData().items) if (t.project === project && t.col === col) t.col = to;
+        saveTasks();
+      }
+    }
+    renderTasks();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
+function renderAddTaskColumn(project) {
+  const add = el('button', { type: 'button', class: 'add-task' }, '+ Add column');
+  const node = el('section', { class: 'add-task-col' }, [add]);
+  add.addEventListener('click', () => {
+    const input = el('input', { placeholder: 'Column name, then Enter', 'aria-label': `New column in ${project}` });
+    add.replaceWith(input);
+    input.focus();
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); renderTasks(); return; }
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const name = input.value.trim();
+      if (!name) { renderTasks(); return; }
+      const p = taskProject(project);
+      if (p.columns.some((c) => c.toLowerCase() === name.toLowerCase())) { toast(`There's already a “${name}” column.`); return; }
+      // New columns go before the last one, so finished tasks stay at the end.
+      p.columns.splice(Math.max(p.columns.length - 1, 0), 0, name);
+      saveTasks();
+      renderTasks();
+    });
+    input.addEventListener('blur', () => { if (!input.value.trim()) setTimeout(() => { if (input.isConnected) renderTasks(); }); });
+  });
+  return node;
+}
+
+async function removeTaskColumn(project, col) {
+  const d = tasksData();
+  const p = taskProject(project);
+  const inIt = d.items.filter((t) => t.project === project && t.col === col);
+  if (inIt.length && !await askConfirm(`Remove the “${col}” column and its ${inIt.length} task${inIt.length > 1 ? 's' : ''}?`, 'Remove')) return;
+  const before = JSON.parse(JSON.stringify(d));
+  p.columns = p.columns.filter((c) => c !== col);
+  d.items = d.items.filter((t) => !(t.project === project && t.col === col));
+  saveTasks();
+  renderTasks();
+  toast(`Removed column “${col}”`, { label: 'Undo', run: () => { tasks.data = before; saveTasks(); if (tasks.open) renderTasks(); } });
 }
 
 function moveTask(id, col, nextTo, before) {
@@ -4570,16 +4731,16 @@ function dueText(due) {
   return new Date(due + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function renderTask(t) {
+// ✓ sends a task to the last column (finished); in the last column, ↺ puts it back in the first.
+function renderTask(t, finished) {
   const today = new Date().toLocaleDateString('en-CA');
-  const finishLabel = t.done ? `Put back: ${t.title}` : `Mark finished: ${t.title}`;
-  const finish = el('button', { type: 'button', class: 'task-finish', title: t.done ? 'Not finished: put it back' : 'Mark finished',
-    'aria-label': finishLabel }, t.done ? '↺' : '✓');
-  finish.addEventListener('click', (e) => { e.stopPropagation(); setTaskDone(t.id, !t.done); });
-  const card = el('div', { class: 'card task' + (t.done ? ' finished' : ''), tabindex: '0', role: 'button',
-    'data-task': t.id, draggable: t.done ? null : 'true', 'aria-label': `Task: ${t.title}. Open to edit` }, [
+  const finish = el('button', { type: 'button', class: 'task-finish', title: finished ? 'Not finished: put it back' : 'Mark finished',
+    'aria-label': (finished ? 'Put back: ' : 'Mark finished: ') + t.title }, finished ? '↺' : '✓');
+  finish.addEventListener('click', (e) => { e.stopPropagation(); finishTask(t.id, !finished); });
+  const card = el('div', { class: 'card task' + (finished ? ' finished' : ''), tabindex: '0', role: 'button',
+    'data-task': t.id, draggable: 'true', 'aria-label': `Task: ${t.title}. Open to edit` }, [
     el('div', { class: 'task-title' }, t.title),
-    t.due ? el('div', { class: 'task-due' + (!t.done && t.due < today ? ' late' : '') }, 'Due ' + dueText(t.due)) : null,
+    t.due ? el('div', { class: 'task-due' + (!finished && t.due < today ? ' late' : '') }, 'Due ' + dueText(t.due)) : null,
     t.notes ? el('div', { class: 'task-notes' }, t.notes) : null,
     finish,
   ]);
@@ -4594,7 +4755,7 @@ function renderTask(t) {
   return card;
 }
 
-function addTaskBox(col, addBtn) {
+function addTaskBox(project, col, addBtn) {
   const input = el('input', { class: 'task-new', placeholder: 'New task, then Enter', 'aria-label': `New task in ${col}` });
   addBtn.replaceWith(input);
   input.focus();
@@ -4605,25 +4766,24 @@ function addTaskBox(col, addBtn) {
     e.preventDefault();
     const title = input.value.trim();
     if (!title) { close(); return; }
-    tasksData().items.push({ id: crypto.randomUUID(), title, notes: '', due: '', col, done: false });
+    tasksData().items.push({ id: crypto.randomUUID(), title, notes: '', due: '', project, col });
     saveTasks();
     renderTasks();
     // Ready for the next one in the same column.
-    const again = [...$('#tasks').querySelectorAll('.task-col')].find((n) => n.querySelector('h2').firstChild.textContent === col);
-    again?.querySelector('.add-task')?.click();
+    [...$('#tasks').querySelectorAll('.task-col')].find((n) => n.dataset.col === col)?.querySelector('.add-task')?.click();
   });
   input.addEventListener('blur', () => { if (!input.value.trim()) setTimeout(close); });
 }
 
-function setTaskDone(id, done) {
+function finishTask(id, done) {
   const t = findTask(id);
-  t.done = done;
-  t.doneAt = done ? Date.now() : null;
+  const cols = taskProject(t.project).columns;
+  const from = t.col;
+  t.col = done ? cols[cols.length - 1] : cols[0];
   saveTasks();
   renderTasks();
   toast(done ? `Finished: ${t.title}` : `Put back: ${t.title}`, { label: 'Undo', run: () => {
-    t.done = !done;
-    t.doneAt = !done ? Date.now() : null;
+    t.col = from;
     saveTasks();
     if (tasks.open) renderTasks();
   } });
@@ -4674,51 +4834,6 @@ function editTask(id) {
   document.body.append(dlg);
   dlg.showModal();
   title.focus();
-}
-
-function renderAddTaskColumn() {
-  const add = el('button', { type: 'button', class: 'add-task' }, '+ Add project');
-  const node = el('section', { class: 'add-task-col' }, [add]);
-  add.addEventListener('click', () => {
-    const input = el('input', { placeholder: 'Project name, then Enter', 'aria-label': 'New project name (also a mail column)' });
-    add.replaceWith(input);
-    input.focus();
-    input.addEventListener('keydown', async (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); renderTasks(); return; }
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      const name = input.value.trim().replace(/\//g, '-');
-      if (!name) { renderTasks(); return; }
-      if (taskColumns().some((c) => c.name.toLowerCase() === name.toLowerCase())) { toast(`There's already a “${name}” project.`); return; }
-      input.disabled = true;   // its blur would otherwise redraw the board under the question
-      const mail = await askConfirm(`Also make a “${name}” column in StediMail?\n\nIts emails would sit next to its tasks. With No, the project is on the task board only.`,
-        'Yes, make a column', { cancelLabel: 'No, tasks only', danger: false });
-      if (mail) addColumn(name);   // the mail column; the task board redraws with it
-      if (!taskColumns().some((c) => c.name.toLowerCase() === name.toLowerCase())) {
-        tasksData().columns.push(name);   // No, or the mail column couldn't be made (nine at most)
-        saveTasks();
-      }
-      renderTasks();
-    });
-    input.addEventListener('blur', () => { if (!input.value.trim()) setTimeout(() => { if (input.isConnected) renderTasks(); }); });
-  });
-  return node;
-}
-
-async function removeTaskColumn(name) {
-  const d = tasksData();
-  const inIt = d.items.filter((t) => t.col === name);
-  if (inIt.length && !await askConfirm(`Remove the “${name}” column and its ${inIt.length} task${inIt.length > 1 ? 's' : ''}?`, 'Remove')) return;
-  const before = { columns: [...d.columns], items: [...d.items] };
-  d.columns = d.columns.filter((n) => n !== name);
-  d.items = d.items.filter((t) => t.col !== name);
-  saveTasks();
-  renderTasks();
-  toast(`Removed column “${name}”`, { label: 'Undo', run: () => {
-    tasks.data = before;
-    saveTasks();
-    if (tasks.open) renderTasks();
-  } });
 }
 
 function onKey(e) {
