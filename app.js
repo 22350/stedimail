@@ -4443,7 +4443,7 @@ function applyTaskSnap(snap, cols) {
     tasks.changingColumns = false;
   }
   saveTasks(null);
-  if (tasks.open) renderTasks();
+  if (tasks.open) renderTasks(); else render();   // tasks show in the mail columns too
 }
 
 function taskUndo() {
@@ -5247,6 +5247,16 @@ function mailColumnTasks(col) {
 
 function renderMailTaskCard(t) {
   const late = t.due && taskMoment(t) < Date.now();
+  // Delete, in the see-through red of the other delete buttons (Paul, 2026-11-08); Undo brings it back.
+  const del = el('button', { type: 'button', class: 'task-delete', 'aria-label': `Delete task: ${t.title}` }, 'Delete');
+  del.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const items = tasksData().items;
+    items.splice(items.indexOf(findTask(t.id)), 1);
+    saveTasks(`Deleted: ${t.title}`);
+    render();
+    taskToast(`Deleted: ${t.title}`);
+  });
   const card = el('article', { class: 'card task-in-mail', tabindex: '0', role: 'button', 'data-task': t.id,
     'aria-label': `Task: ${t.title}${t.due ? ', due ' + taskWhenText(t) : ''}. Open it` }, [
     el('div', { class: 'top' }, [el('span', { class: 'task-flag' }, 'Task'), t.alarm != null ? el('span', { class: 'task-bell', title: 'Alarm set' }, '🔔') : null,
@@ -5254,6 +5264,7 @@ function renderMailTaskCard(t) {
     el('div', { class: 'task-title' }, t.title),
     t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
       t.people.map((p) => (p.name ? `${p.name} <${p.addr}>` : p.addr)).join(', ')]) : null,
+    el('div', { class: 'task-actions' }, del),
   ]);
   card.addEventListener('click', () => openTaskDialog({ id: t.id }));
   card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) openTaskDialog({ id: t.id }); });

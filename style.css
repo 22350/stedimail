@@ -660,6 +660,10 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .card.task-in-mail time.late { color: #d9534f; font-weight: 700; }
 .card.task-in-mail .task-title { margin-top: .25rem; font-size: 2rem; line-height: 1.2; }
 .card.task-in-mail .colab { font-weight: 700; color: var(--text); }
+.card.task-in-mail .task-actions { display: flex; justify-content: flex-end; margin-top: .5rem; }
+.card.task-in-mail .task-delete { min-height: 40px; padding: 0 1.1rem; font-weight: 700; border-radius: 8px;
+  background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); color: inherit; }
+.card.task-in-mail .task-delete:hover { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
 .task-people { font-size: .85rem; color: var(--muted); margin-top: .2rem; }
 dialog.task-edit h2 { margin: 0 0 .8rem; font-size: 1.2rem; }
 dialog.task-edit select { min-height: 40px; font: inherit; padding: 0 .6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
