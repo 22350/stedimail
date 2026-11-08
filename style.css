@@ -638,20 +638,29 @@ body.tasks-on #board, body.tasks-on #sidebar, body.tasks-on #bulk,
 body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picker, body.tasks-on #btn-menu { display: none !important; }
 .tasks-note { gap: 1rem; }
 /* Add a task: the ✓ box in every mail column's title bar, the green + on StediTask's To do (Paul, 2026-11-08) */
+/* The sort icon in the same box as the ✓ (Paul, 2026-11-08) */
+.column h2 .icon-btn.boxed { width: 34px; height: 34px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  border-radius: 8px; border: 1px solid currentColor; background: transparent; opacity: .75; }
+.column h2 .icon-btn.boxed svg { width: 22px; height: 22px; }
+.column h2 .icon-btn.boxed:hover { opacity: 1; background: rgba(255,255,255,.12); }
+.column h2 .icon-btn.boxed.on { opacity: 1; }
 .column h2 .add-task-btn { flex: none; width: 34px; height: 34px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
   border-radius: 8px; border: 1px solid currentColor; background: transparent; color: var(--bar-text); opacity: .75; }
 .column h2 .add-task-btn:hover { opacity: 1; background: rgba(255,255,255,.12); }
 .column h2 .add-task-btn.plus { border-color: #2e9d5b; background: #2e9d5b; color: #fff; opacity: 1; }
 .column h2 .add-task-btn.plus:hover { background: #38b56a; }
 /* Tasks shown in the mail columns: light red cards */
-.card.task-in-mail { background: #f8d4d4; border-color: #eba9a9; color: #3b1a1a; }
-.card.task-in-mail .top { display: flex; gap: .5rem; align-items: center; font-size: .82rem; }
-.card.task-in-mail .task-flag { font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #a33a3a; }
-.card.task-in-mail time { margin-left: auto; color: #6b3a3a; }
-.card.task-in-mail time.late { color: #b3261e; font-weight: 700; }
-.card.task-in-mail .task-title { margin-top: .2rem; }
+/* Tasks in the mail columns: the normal card with a heavy outline (thicker than a selected card's), big TASK,
+   bell and title, and the people after "CoLab:" (Paul, 2026-11-08) */
+.card.task-in-mail { border: 4px solid var(--text); }
+.card.task-in-mail .top { display: flex; gap: .6rem; align-items: center; }
+.card.task-in-mail .task-flag { font-size: 1.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; line-height: 1.1; }
+.card.task-in-mail .task-bell { font-size: 1.6rem; line-height: 1; }
+.card.task-in-mail time { margin-left: auto; color: var(--muted); }
+.card.task-in-mail time.late { color: #d9534f; font-weight: 700; }
+.card.task-in-mail .task-title { margin-top: .25rem; font-size: 2rem; line-height: 1.2; }
+.card.task-in-mail .colab { font-weight: 700; color: var(--text); }
 .task-people { font-size: .85rem; color: var(--muted); margin-top: .2rem; }
-.card.task-in-mail .task-people { color: #6b3a3a; }
 dialog.task-edit h2 { margin: 0 0 .8rem; font-size: 1.2rem; }
 dialog.task-edit select { min-height: 40px; font: inherit; padding: 0 .6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
 dialog.task-edit .error:empty { display: none; }

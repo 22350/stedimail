@@ -2630,6 +2630,7 @@ function renderSearchColumn() {
   if (sort.key !== 'newest') ids.sort((a, b) => sort.cmp(state.threads.get(a), state.threads.get(b)));
   const sortBtn = iconButton(`Sort: ${sort.label}`, 'sort', (b) => openSortMenu(b, col));
   if (sort.key !== 'newest') sortBtn.classList.add('on');
+  sortBtn.classList.add('boxed');   // in a box like the add-task ✓ (Paul, 2026-11-08)
   let deleteAll = null;
   const folderLabel = state.searchArgs?.folder?.label;
   if ((folderLabel === 'SPAM' || folderLabel === 'TRASH') && ids.length) {
@@ -2775,6 +2776,7 @@ function renderColumn(col, i) {
   const sort = sortOf(col);
   const sortBtn = iconButton(`Sort: ${sort.label}`, 'sort', (b) => openSortMenu(b, col));
   if (sort.key !== 'newest') sortBtn.classList.add('on');
+  sortBtn.classList.add('boxed');   // in a box like the add-task ✓ (Paul, 2026-11-08)
   const closeBtn = i > 0 ? iconButton(`Remove column “${col.name}”`, null, () => removeColumn(i), '✕') : null;
   // Tells Stediclick's magnet to aim at this button's left end, away from the column-width handle beside it.
   (closeBtn || sortBtn).classList.add('steady-aim-left');
@@ -4894,6 +4896,7 @@ function renderTaskColumn(project, col, last) {
     { label: 'Rename column', run: () => renameColumnBox(project, col) },
   ]));
   if (sort.key !== 'mine') sortBtn.classList.add('on');
+  sortBtn.classList.add('boxed');   // in a box like the add-task ✓ (Paul, 2026-11-08)
   const remove = p.columns.length > 1 ? iconButton(`Remove column “${col}”`, null, () => removeTaskColumn(project, col), '✕') : null;
   (remove || sortBtn).classList.add('steady-aim-left');
   const first = p.columns[0] === col;
@@ -5225,7 +5228,7 @@ function addTaskButton(label, onClick, cls = '') {
   const b = el('button', { type: 'button', class: 'add-task-btn ' + cls, title: label, 'aria-label': label, draggable: 'false' });
   b.innerHTML = cls.includes('plus')
     ? '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'
-    : '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12.5l3 3 5.5-6"/></svg>';
+    : '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 12.5l4.5 4.5 8.5-9.5"/></svg>';   // just a check: the button's own border is the box
   b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
   b.addEventListener('dblclick', (e) => e.stopPropagation());
   return b;
@@ -5249,7 +5252,8 @@ function renderMailTaskCard(t) {
     el('div', { class: 'top' }, [el('span', { class: 'task-flag' }, 'Task'), t.alarm != null ? el('span', { class: 'task-bell', title: 'Alarm set' }, '🔔') : null,
       t.due ? el('time', { class: late ? 'late' : '' }, taskWhenText(t)) : null]),
     el('div', { class: 'task-title' }, t.title),
-    t.people?.length ? el('div', { class: 'task-people' }, peopleText(t.people)) : null,
+    t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
+      t.people.map((p) => (p.name ? `${p.name} <${p.addr}>` : p.addr)).join(', ')]) : null,
   ]);
   card.addEventListener('click', () => openTaskDialog({ id: t.id }));
   card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) openTaskDialog({ id: t.id }); });
