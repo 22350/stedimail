@@ -663,17 +663,18 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
    the description below at normal weight, people after "CoLab:" one per line, Delete on the last line. */
 .card.task-card { border: 2px solid var(--text); background: color-mix(in srgb, var(--panel) 76%, #000); padding: .55rem .85rem; min-height: 0; flex: none; }   /* 10% darker, then 15% darker again (Paul, 2026-11-08) */
 .card.task-card .top { display: flex; gap: .6rem; align-items: center; }
-.card.task-card .task-head { flex: 1; font-size: 1.8rem; font-weight: normal; line-height: 1.15; overflow-wrap: break-word; min-width: 0; }
+.card.task-card .task-head { flex: 1; font-size: 1.62rem; font-weight: normal; line-height: 1.15; overflow-wrap: break-word; min-width: 0; }
 .task-bell { display: inline-flex; color: var(--muted); vertical-align: -.15em; margin-left: .3rem; }
 .task-bell svg { width: 1.05em; height: 1.05em; }
 .card.task-card .task-bell { font-size: 1.6rem; margin-left: 0; flex: none; }
 .card.task-card .task-when { display: block; margin-top: .15rem; color: var(--muted); }
 .card.task-card .task-when.late { color: #d9534f; font-weight: 700; }
-.card.task-card .task-desc { margin-top: .25rem; font-size: 1.05rem; line-height: 1.25; font-weight: normal; white-space: pre-wrap; overflow-wrap: anywhere;
+.card.task-card .task-desc { margin-top: .25rem; font-size: .95rem; line-height: 1.25; font-weight: normal; white-space: pre-wrap; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }   /* two lines, then … (Paul, 2026-11-08) */
 .card.task-card .colab { font-weight: 700; color: var(--text); }
-.card.task-card .task-row2 { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-top: .15rem; }
-.card.task-card .task-row2 .task-when { margin-top: 0; }
+.card.task-card:not(.collapsed) { padding-right: 2.9rem; }   /* room for the corner */
+.card.task-card .task-corner { position: absolute; top: .35rem; right: .35rem; display: flex; flex-direction: column; align-items: center; gap: .25rem; }
+.card.task-card .task-corner .task-bell { font-size: 1.35rem; margin: 0; }
 .card.task-card .task-people { margin-top: .3rem; }
 .card.task-card .task-delete { flex: none; width: 29px; height: 29px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
   font-size: 1.23rem; line-height: 1; border-radius: 8px; color: var(--text);
@@ -683,7 +684,8 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .card.task-card .colab-list { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .card.task-card .task-finish { position: static; transform: none; flex: none; }
 .card.task-card.finished .task-head { text-decoration: line-through; }
-.card.task.task-card { padding-right: .85rem; min-height: 0; }   /* no old 52px minimum: a folded card is even top and bottom */ 
+.card.task.task-card { padding-right: 2.9rem; min-height: 0; }
+.card.task.task-card.collapsed { padding-right: .85rem; }   /* no old 52px minimum: a folded card is even top and bottom */ 
 /* A folded task: one line, same dark background and outline as an open one (Paul, 2026-11-08) */
 .card.task-card.collapsed { padding-top: .3rem; padding-bottom: .3rem; }
 .card.task-card.collapsed .top { gap: .5rem; min-height: 30px; }   /* as tall as StediTask's ✓, so both folded cards match */

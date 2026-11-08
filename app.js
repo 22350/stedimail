@@ -5393,10 +5393,11 @@ function taskCardParts(t, { finished = false, finish = null, tagColor = null } =
   const people = t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),
     el('span', { class: 'colab-list' }, t.people.map((p) => el('span', {}, p.name ? `${p.name} <${p.addr}>` : p.addr)))]) : null;
   const head = el('span', { class: 'task-head task-title' }, t.title);
-  const top = el('div', { class: 'top' }, [head, t.alarm != null ? bellIcon() : null, finish]);
-  const due = t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, 'Due ' + taskWhenText(t)) : el('span');
-  // Delete under the bell, on the due date's line (Paul, 2026-11-08).
-  const body = [top, el('div', { class: 'task-row2' }, [due, del]), desc, people];
+  const top = el('div', { class: 'top' }, [head, finish]);
+  const due = t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, 'Due ' + taskWhenText(t)) : null;
+  // The bell with the red ✕ under it, tucked into the top right corner (Paul, 2026-11-08).
+  const corner = el('div', { class: 'task-corner' }, [t.alarm != null ? bellIcon() : null, del]);
+  const body = [corner, top, due, desc, people];
   return [tagColor ? el('div', { class: 'task-proj', style: `--tab:${tagColor}` }, t.project) : null, ...body];
 }
 
