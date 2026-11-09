@@ -798,9 +798,9 @@ body:not(.tasks-on) .bar h1 .task-logo, body.tasks-on .bar h1 .mail-logo { displ
   border-radius: 50%; font-size: 1.2rem; font-weight: 700; color: #4f8a2b; border-color: #9fbf5a; background: transparent; }
 .task-finish:hover:not(:disabled) { background: #9fbf5a; color: #1b1d21; border-color: #9fbf5a; }
 .task-col .add-task, .task-col .task-new { margin: .3rem .6rem .6rem; width: calc(100% - 1.2rem); }
-/* Add task: the translucent red of the red ✕ / Downloads buttons (Paul, 2026-11-09) */
-.task-col .add-task { color: var(--text); background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); }
-.task-col .add-task:hover:not(:disabled) { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
+/* Add task: the translucent green of the complete ✓ box (Paul, 2026-11-09) */
+.task-col .add-task { color: var(--text); background: rgba(60, 190, 95, .16); border: 1px solid rgba(60, 190, 95, .45); }
+.task-col .add-task:hover:not(:disabled) { background: rgba(60, 190, 95, .28); border-color: rgba(60, 190, 95, .7); }
 .add-task { text-align: left; color: var(--muted); background: transparent; border-style: dashed; }
 .add-task:hover:not(:disabled) { color: var(--text); }
 .add-task-col { flex: 0 0 220px; }
