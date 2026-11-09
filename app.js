@@ -5120,8 +5120,9 @@ function renderTaskColumn(project, col, last) {
   remove?.classList.add('boxed');
   (remove || sortBtn).classList.add('steady-aim-left');
   const head = el('h2', {}, [col, el('span', { class: 'count' }, String(items.length)), sortBtn, remove]);   // no green + (Paul, 2026-11-09)
-  const add = el('button', { type: 'button', class: 'add-task' }, '+ Add task');
-  add.addEventListener('click', () => openTaskDialog({ project, col }));
+  // "+ Add task" only at the bottom of the first column (To do) (Paul, 2026-11-09)
+  const add = col === p.columns[0] ? el('button', { type: 'button', class: 'add-task' }, '+ Add task') : null;
+  add?.addEventListener('click', () => openTaskDialog({ project, col }));
   const collapsed = (p.collapsed || []).includes(col);
   const node = el('section', { class: 'column task-col' + (last ? ' finished-col' : '') + (collapsed ? ' collapsed' : ''), 'data-col': col },
     [head, el('div', { class: 'cards' }, items.map((t) => renderTask(t, last))), add]);
@@ -5502,12 +5503,11 @@ function bellIcon() {
   return b;
 }
 
-// The ✓ box in a column's title bar, and StediTask's + on To do.
+// The + box in a column's title bar (was a ✓ until 2026-11-09).
 function addTaskButton(label, onClick, cls = '') {
   const b = el('button', { type: 'button', class: 'add-task-btn ' + cls, title: label, 'aria-label': label, draggable: 'false' });
-  b.innerHTML = cls.includes('plus')
-    ? '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'
-    : '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 12.5l4.5 4.5 8.5-9.5"/></svg>';   // just a check: the button's own border is the box
+  // a + in the column's box, not a ✓ (Paul, 2026-11-09)
+  b.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
   b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
   b.addEventListener('dblclick', (e) => e.stopPropagation());
   return b;
