@@ -4846,8 +4846,56 @@ function taskMatches(t) {
   return [t.title, t.notes, t.project, ...(t.people || []).flatMap((p) => [p.name, p.addr])].some((x) => (x || '').toLowerCase().includes(q));
 }
 
+// Movement on the task board (Paul, 2026-11-09): after each redraw, cards and columns glide from where they were
+// to where they are now; new cards fade in. A card that changes column flies above the board so the column's
+// scroll box doesn't clip it.
+function taskBoardSnapshot(box, key) {
+  const cards = new Map(), cols = new Map();
+  for (const c of box.querySelectorAll('.task-cols .task-card[data-task]'))
+    cards.set(c.dataset.task, { r: c.getBoundingClientRect(), col: c.closest('.column')?.dataset.col });
+  for (const c of box.querySelectorAll('.task-cols .column[data-col]')) cols.set(c.dataset.col, c.getBoundingClientRect());
+  return { key, cards, cols };
+}
+function animateTaskBoard(box, before) {
+  if (!before || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const T = { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' };
+  for (const c of box.querySelectorAll('.task-cols .column[data-col]')) {
+    const was = before.cols.get(c.dataset.col);
+    if (!was) continue;
+    const r = c.getBoundingClientRect(), dx = was.left - r.left;
+    if (Math.abs(dx) > 1) c.animate([{ transform: `translateX(${dx}px)` }, { transform: 'none' }], T);
+  }
+  for (const c of box.querySelectorAll('.task-cols .task-card[data-task]')) {
+    const was = before.cards.get(c.dataset.task);
+    const r = c.getBoundingClientRect();
+    if (!was) {
+      if (before.cards.size) c.animate([{ opacity: 0, transform: 'scale(.92)' }, { opacity: 1, transform: 'none' }], T);
+      continue;
+    }
+    const dx = was.r.left - r.left, dy = was.r.top - r.top;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+    if (was.col === c.closest('.column')?.dataset.col) {
+      c.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], T);
+      continue;
+    }
+    // changed column: a copy flies over the board, the real card shows when it lands
+    const ghost = c.cloneNode(true);
+    Object.assign(ghost.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px',
+      margin: 0, zIndex: 50, pointerEvents: 'none', boxSizing: 'border-box' });
+    ghost.removeAttribute('tabindex');
+    ghost.setAttribute('aria-hidden', 'true');
+    document.body.append(ghost);
+    c.style.visibility = 'hidden';
+    ghost.animate([{ transform: `translate(${dx}px, ${dy}px)`, boxShadow: '0 10px 28px rgba(0,0,0,.35)' },
+      { transform: 'none', boxShadow: '0 10px 28px rgba(0,0,0,0)' }], { ...T, duration: 340 })
+      .finished.catch(() => {}).finally(() => { ghost.remove(); c.style.visibility = ''; });
+  }
+}
+
 function renderTasks() {
   const box = $('#tasks');
+  const animKey = store.get('taskView', 'board') + '|' + store.get('taskProject', '');
+  const before = box.querySelector('.task-cols') ? taskBoardSnapshot(box, animKey) : null;
   const scrolls = [...box.querySelectorAll('.cards')].map((c) => c.scrollTop);
   const ganttScroll = box.querySelector('.gantt')?.scrollLeft;
   const list = taskProjects();
@@ -4865,6 +4913,8 @@ function renderTasks() {
   box.querySelectorAll('.cards').forEach((c, i) => { c.scrollTop = scrolls[i] || 0; });
   const gantt = box.querySelector('.gantt');
   if (gantt) gantt.scrollLeft = ganttScroll ?? Math.max(0, Number(gantt.dataset.today) - 320);
+  // only when the same board is redrawn; switching project or view just shows the new one
+  if (before?.key === store.get('taskView', 'board') + '|' + store.get('taskProject', '')) animateTaskBoard(box, before);
 }
 
 function setTaskView(view) {

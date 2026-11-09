@@ -730,7 +730,7 @@ dialog.task-edit .error:empty { display: none; }
 .task-views { display: none; gap: 6px; }
 body.tasks-on .bar .task-views { display: inline-flex; }
 body.tasks-on #btn-compose, body.tasks-on #btn-downloads { display: none !important; }
-#task-search { width: 220px; min-height: 38px; margin-left: .6rem; border-radius: 999px; padding: 0 .9rem;
+#task-search { width: 360px; flex: 0 1 360px; min-width: 120px; min-height: 0; margin-left: .6rem; border-radius: 20px; padding: .45rem .8rem;   /* same size as the mail search (Paul, 2026-11-09) */
   background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.22); color: var(--bar-text); }
 #task-search::placeholder { color: var(--bar-muted); }
 .task-views button { border-radius: 999px; padding: 0 1rem; min-height: 38px; font-weight: 600; }
