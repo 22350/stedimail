@@ -3,7 +3,7 @@
 // The videos show after arriving from the app's Demo videos button or signing in with Google.
 // GitHub Pages can't restrict files, so this keeps ordinary visitors out rather than locking the videos.
 const CLIENT_ID = '922000608082-id99bt36apvi1fond3n02uialhdlvcg0.apps.googleusercontent.com';
-const VIDEOS = ['tour.mp4', 'labels.mp4'];
+const VIDEOS = ['tour.mp4', 'labels.mp4', 'tasks.mp4'];
 const $ = (id) => document.getElementById(id);
 
 function cameFromApp() {
