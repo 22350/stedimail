@@ -4895,8 +4895,7 @@ function renderAllColumns(list) {
   return order.map((col) => {
     const here = items.filter((t) => t.col === col);
     const node = el('section', { class: 'column task-col all-col', 'data-col': col }, [
-      el('h2', {}, [col, el('span', { class: 'count' }, String(here.length)),
-        col === order[0] ? addTaskButton('Add a task', () => openTaskDialog({ project: GENERAL, col }), 'plus') : null]),
+      el('h2', {}, [col, el('span', { class: 'count' }, String(here.length))]),   // no green + in the header (Paul, 2026-11-09)
       el('div', { class: 'cards' }, here.map((t) => renderTask(t, isFinishedTask(t), projectColor(t.project, list)))),
     ]);
     node.append(...resizeHandles(node));
@@ -5120,9 +5119,7 @@ function renderTaskColumn(project, col, last) {
   const remove = p.columns.length > 1 ? iconButton(`Remove column “${col}”`, null, () => removeTaskColumn(project, col), xIcon()) : null;
   remove?.classList.add('boxed');
   (remove || sortBtn).classList.add('steady-aim-left');
-  const first = p.columns[0] === col;
-  const plus = first ? addTaskButton(`Add a task to ${project}`, () => openTaskDialog({ project, col }), 'plus') : null;
-  const head = el('h2', {}, [col, el('span', { class: 'count' }, String(items.length)), plus, sortBtn, remove]);
+  const head = el('h2', {}, [col, el('span', { class: 'count' }, String(items.length)), sortBtn, remove]);   // no green + (Paul, 2026-11-09)
   const add = el('button', { type: 'button', class: 'add-task' }, '+ Add task');
   add.addEventListener('click', () => openTaskDialog({ project, col }));
   const collapsed = (p.collapsed || []).includes(col);
