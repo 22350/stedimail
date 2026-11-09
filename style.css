@@ -640,7 +640,7 @@ dialog.report pre { white-space: pre-wrap; font-size: 12px; max-height: 180px; o
 .unsub .hint { margin: 0; font-size: .63rem; }
 
 /* Tasks: StediTask inside StediMail (2026-11-08). The checklist button switches the board to tasks. */
-.bar #btn-tasks { margin-right: 10px; }   /* apart from the gear */
+.bar #btn-tasks { margin-right: 10px; width: 76px; }   /* apart from the gear; twice as wide (Paul, 2026-11-09) */
 .bar #btn-tasks[aria-pressed="true"] { background: #9fbf5a; border-color: #9fbf5a; color: #1b1d21; }
 body:not(.tasks-on) #tasks, body:not(.tasks-on) #tasks-note { display: none !important; }
 body.tasks-on #board, body.tasks-on #sidebar, body.tasks-on #bulk,
