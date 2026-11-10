@@ -2939,7 +2939,7 @@ function renderColumn(col, i) {
   // Tells Stediclick's magnet to aim at this button's left end, away from the column-width handle beside it.
   (closeBtn || sortBtn).classList.add('steady-aim-left');
   const taskBtn = addTaskButton(`Add a task to ${col.inbox ? GENERAL : col.name}`, () => openTaskDialog({ project: col.inbox ? GENERAL : col.name }));
-  const head = el('h2', {}, [columnCheckbox(i), col.name, el('span', { class: 'count' }, ids.length + (state.more[i] ? '+' : '')),
+  const head = el('h2', {}, [columnCheckbox(i), el('span', { class: 'colname', title: col.name }, col.name), el('span', { class: 'count' }, ids.length + (state.more[i] ? '+' : '')),
     taskBtn, sortBtn, closeBtn]);
   const node = el('section', { class: 'column' + (settings.collapsedCols.includes(col.name) ? ' collapsed' + (store.get('newMailCols', []).includes(col.name) ? ' new-mail' : '') : ''), 'data-col': i }, [
     head,
@@ -4982,7 +4982,7 @@ function renderAllColumns(list) {
   return order.map((col) => {
     const here = items.filter((t) => t.col === col);
     const node = el('section', { class: 'column task-col all-col', 'data-col': col }, [
-      el('h2', {}, [col, el('span', { class: 'count' }, String(here.length))]),   // no green + in the header (Paul, 2026-11-09)
+      el('h2', {}, [el('span', { class: 'colname', title: col }, col), el('span', { class: 'count' }, String(here.length))]),   // no green + in the header (Paul, 2026-11-09)
       el('div', { class: 'cards' }, here.map((t) => renderTask(t, isFinishedTask(t), projectColor(t.project, list)))),
     ]);
     node.append(...resizeHandles(node));
@@ -5034,7 +5034,7 @@ function renderTimeline(projects, list) {
     if (!tasksIn.length) continue;
     const pc = projectColor(p.name, list);
     rows.push(el('div', { class: 'grow gproj', style: `--pc:${pc}` }, [el('div', { class: 'glabel' }, p.name), track([])]));
-    for (const t of tasksIn) {
+    for (const [i, t] of tasksIn.entries()) {
       const a = x(startOf(t)), b = x(endOf(t)) + W;
       const done = isFinishedTask(t), late = !done && t.due && t.due < todayIso;
       const label = `${t.title}: ${dueText(startOf(t))}${t.due ? ' to ' + dueText(t.due) : ', no due date'}${late ? ', late' : ''}${done ? ', finished' : ''}`;
@@ -5042,7 +5042,7 @@ function renderTimeline(projects, list) {
       const bar = el('button', { type: 'button', class: 'gbar' + (done ? ' done' : '') + (late ? ' late' : '') + (t.due ? '' : ' nodue'),
         style: `left:${a}px;width:${Math.max(b - a, W)}px`, title: label, 'aria-label': label });
       for (const n of [name, bar]) n.addEventListener('click', () => editTask(t.id));
-      rows.push(el('div', { class: 'grow', style: `--pc:${pc}` }, [el('div', { class: 'glabel' }, name), track([bar])]));
+      rows.push(el('div', { class: 'grow' + (i % 2 ? ' galt' : ''), style: `--pc:${pc}` }, [el('div', { class: 'glabel' }, name), track([bar])]));
     }
   }
   if (rows.length === 1) rows.push(el('p', { class: 'hint task-empty' }, 'No tasks here yet.'));
@@ -5206,7 +5206,7 @@ function renderTaskColumn(project, col, last) {
   const remove = p.columns.length > 1 ? iconButton(`Remove column “${col}”`, null, () => removeTaskColumn(project, col), xIcon()) : null;
   remove?.classList.add('boxed');
   (remove || sortBtn).classList.add('steady-aim-left');
-  const head = el('h2', {}, [col, el('span', { class: 'count' }, String(items.length)), sortBtn, remove]);   // no green + (Paul, 2026-11-09)
+  const head = el('h2', {}, [el('span', { class: 'colname', title: col }, col), el('span', { class: 'count' }, String(items.length)), sortBtn, remove]);   // no green + (Paul, 2026-11-09)
   // "+ Add task" only at the bottom of the first column (To do) (Paul, 2026-11-09)
   const add = col === p.columns[0] ? el('button', { type: 'button', class: 'add-task' }, '+ Add task') : null;
   add?.addEventListener('click', () => openTaskDialog({ project, col }));
