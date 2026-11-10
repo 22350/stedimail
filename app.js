@@ -5026,7 +5026,7 @@ function renderTimeline(projects, list) {
   for (let i = 0; i < days; i += 7) weeks.push(i);
   const grid = () => weeks.map((i) => el('div', { class: 'gday', style: `left:${i * W}px` }));
   const track = (kids) => el('div', { class: 'gtrack', style: `width:${width}px` }, [...grid(), el('div', { class: 'gtoday', style: `left:${x(todayIso)}px`, title: 'Today' }), ...kids]);
-  const rows = [el('div', { class: 'grow ghead' }, [el('div', { class: 'glabel' }, 'Task'),
+  const rows = [el('div', { class: 'grow ghead' }, [el('div', { class: 'glabel' }, 'Pending'),
     el('div', { class: 'gtrack', style: `width:${width}px` }, [...grid(), ...weeks.map((i) => el('div', { class: 'gweek', style: `left:${i * W}px` },
       new Date(addDays(start, i)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })))])])];
   let rowN = 0;   // alternate across the whole list, first row grey (Paul, 2026-11-09)
