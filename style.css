@@ -188,6 +188,8 @@ a.nav-main { color: var(--text); text-decoration: none; }
 }
 .card.open { border-color: var(--accent); }
 .card.dragging { opacity: .4; }
+/* the gap a dragged task card will land in (Paul, 2026-11-09) */
+.task-ph { flex: none; border: 2px dashed var(--accent); border-radius: 10px; opacity: .6; box-sizing: border-box; }
 .card.nested { margin-left: 1.5rem; border-left: 3px solid var(--accent); }
 .card.nest-target { outline: 3px solid var(--accent); outline-offset: 1px; background: var(--drop); }
 .card.nest-target::after {

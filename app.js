@@ -4846,13 +4846,47 @@ function taskMatches(t) {
   return [t.title, t.notes, t.project, ...(t.people || []).flatMap((p) => [p.name, p.addr])].some((x) => (x || '').toLowerCase().includes(q));
 }
 
+// While a card is dragged on one project's board, the other cards slide apart to open a gap where it will land
+// (Paul, 2026-11-09). The card itself is folded away; the gap shows where it is going.
+const taskDrag = { id: null, card: null, ph: el('div', { class: 'task-ph', 'aria-hidden': 'true' }) };
+function slideCards(scopes, change) {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const cards = scopes.flatMap((s) => (s ? [...s.querySelectorAll('.task-card')] : []));
+  const was = new Map(cards.map((c) => [c, c.getBoundingClientRect().top]));
+  change();
+  if (reduce) return;
+  for (const c of cards) {
+    const dy = was.get(c) - c.getBoundingClientRect().top;
+    if (Math.abs(dy) > 1) c.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 180, easing: 'ease-out' });
+  }
+}
+function placeTaskGap(cardsBox, y) {
+  const ph = taskDrag.ph;
+  const next = [...cardsBox.querySelectorAll('.task-card')].find((c) => c !== taskDrag.card
+    && y < c.getBoundingClientRect().top + c.offsetHeight / 2);
+  let now = ph.nextElementSibling;
+  if (now === taskDrag.card) now = now.nextElementSibling;
+  if (ph.parentElement === cardsBox && now === (next || null)) return;   // already there
+  const from = ph.parentElement;
+  slideCards([from, from === cardsBox ? null : cardsBox], () => cardsBox.insertBefore(ph, next || null));
+}
+function endTaskDrag() {
+  if (!taskDrag.card) return;
+  const card = taskDrag.card, from = taskDrag.ph.parentElement;
+  taskDrag.card = taskDrag.id = null;
+  if (from && card.isConnected) slideCards([from, card.parentElement], () => { taskDrag.ph.remove(); card.style.display = ''; });
+  else { taskDrag.ph.remove(); card.style.display = ''; }
+}
+
 // Movement on the task board (Paul, 2026-11-09): after each redraw, cards and columns glide from where they were
 // to where they are now; new cards fade in. A card that changes column flies above the board so the column's
 // scroll box doesn't clip it.
 function taskBoardSnapshot(box, key) {
   const cards = new Map(), cols = new Map();
-  for (const c of box.querySelectorAll('.task-cols .task-card[data-task]'))
-    cards.set(c.dataset.task, { r: c.getBoundingClientRect(), col: c.closest('.column')?.dataset.col });
+  for (const c of box.querySelectorAll('.task-cols .task-card[data-task]')) {
+    const at = c === taskDrag.card && taskDrag.ph.isConnected ? taskDrag.ph : c;   // a dragged card lands from its gap
+    cards.set(c.dataset.task, { r: at.getBoundingClientRect(), col: at.closest('.column')?.dataset.col });
+  }
   for (const c of box.querySelectorAll('.task-cols .column[data-col]')) cols.set(c.dataset.col, c.getBoundingClientRect());
   return { key, cards, cols };
 }
@@ -5205,6 +5239,7 @@ function renderTaskColumn(project, col, last) {
     if (!e.dataTransfer.types.includes(TASK_DRAG)) return;
     e.preventDefault();
     node.classList.add('drop');
+    if (taskDrag.card && !sort.cmp) placeTaskGap(node.querySelector('.cards'), e.clientY);   // a sorted column decides the place itself
   });
   node.addEventListener('dragleave', (e) => { if (!node.contains(e.relatedTarget)) clearMarks(); });
   node.addEventListener('drop', (e) => {
@@ -5219,6 +5254,13 @@ function renderTaskColumn(project, col, last) {
     const id = e.dataTransfer.getData(TASK_DRAG);
     if (!id) return;
     e.preventDefault();
+    const ph = taskDrag.ph;
+    if (taskDrag.card && !sort.cmp && ph.parentElement === node.querySelector('.cards')) {   // lands in the gap
+      const sib = (dir) => { let n = ph[dir]; while (n && (n === taskDrag.card || !n.dataset?.task)) n = n[dir]; return n; };
+      const next = sib('nextElementSibling'), prev = sib('previousElementSibling');
+      moveTask(id, col, (next || prev)?.dataset.task, !!next);
+      return;
+    }
     const over = sort.cmp ? null : e.target.closest('.card.task');   // a sorted column has no "my order" to drop into
     const before = over && e.clientY < over.getBoundingClientRect().top + over.offsetHeight / 2;
     moveTask(id, col, over?.dataset.task, before);
@@ -5345,8 +5387,13 @@ function renderTask(t, finished, tagColor = null) {
     e.dataTransfer.setData(TASK_DRAG, t.id);
     e.dataTransfer.effectAllowed = 'move';
     card.classList.add('dragging');
+    if (!card.closest('.task-col:not(.all-col)')) return;   // the gap only on one project's board
+    taskDrag.id = t.id; taskDrag.card = card;
+    taskDrag.ph.style.height = card.offsetHeight + 'px';
+    // after the browser has taken its picture of the card: fold it away, leaving the gap in its place
+    setTimeout(() => { if (taskDrag.card === card) { card.before(taskDrag.ph); card.style.display = 'none'; } });
   });
-  card.addEventListener('dragend', () => card.classList.remove('dragging'));
+  card.addEventListener('dragend', () => { card.classList.remove('dragging'); endTaskDrag(); });
   return card;
 }
 
