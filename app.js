@@ -5412,7 +5412,7 @@ function renderTask(t, finished, tagColor = null) {
     e.dataTransfer.effectAllowed = 'move';
     card.classList.add('dragging');
     dragGhost.start(e, 'check');   // a see-through checkmark follows the pointer, like the envelope for an email (Paul, 2026-11-09)
-    if (!card.closest('.task-col:not(.all-col)')) return;   // the gap only on one project's board
+    if (!card.closest('.task-col')) return;   // the gap on every task board, All projects too (Paul, 2026-11-09)
     taskDrag.id = t.id; taskDrag.card = card;
     taskDrag.ph.style.height = card.offsetHeight + 'px';
     // after the browser has taken its picture of the card: fold it away, leaving the gap in its place
