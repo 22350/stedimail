@@ -844,3 +844,6 @@ dialog.task-edit .spacer { flex: 1; }
   .task-tabs { flex-wrap: nowrap; overflow-x: auto; }
   .task-tab { flex: none; }
 }
+/* bigger words in the Task column: names 1.2rem, "Task" title the size of the dates (Paul, 2026-11-09) */
+.gantt .glabel { font-size: 1.2rem; }
+.gantt .ghead .glabel { font-size: 1.6rem; }
