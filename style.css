@@ -153,7 +153,7 @@ a.nav-main { color: var(--text); text-decoration: none; }
   background: var(--col); border-radius: 12px; border: 2px solid transparent;
 }
 .column.drop { background: var(--drop); border-color: var(--accent); }
-.column h2 { font-size: 1rem; margin: 0; padding: .1rem 1.25rem;   /* same gap both sides of the header row (Paul, 2026-11-09) */ display: flex; gap: .5rem; align-items: center; }
+.column h2 { font-size: 1rem; margin: 0; padding: .1rem .625rem;   /* same gap both sides of the header row; halved (Paul, 2026-11-09) */ display: flex; gap: .5rem; align-items: center; }
 .column h2 { background: var(--bar-bg); color: var(--bar-text); border-radius: 10px 10px 0 0; margin-bottom: .6rem; }
 /* Header bars never shorter than one whose name runs to two lines (Paul, 2026-11-08) */
 .column h2 { min-height: calc(2lh + .2rem); }
