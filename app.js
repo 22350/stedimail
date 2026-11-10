@@ -2331,6 +2331,7 @@ function el(tag, attrs = {}, children = []) {
 
 const ICONS = {
   play: 'M8 5v14l11-7z',
+  check: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
   sort: 'M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z',
   mic: 'M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z',
   widen: 'M4 12l4-4v3h8V8l4 4-4 4v-3H8v3z',
@@ -2375,9 +2376,10 @@ function icon(name, cls) {
 const dragGhost = {
   node: null,
   blank: null,
-  start(e) {
+  start(e, kind = 'mail') {   // 'check' for a StediTask card (Paul, 2026-11-09)
     if (!this.node) {
       this.node = el('div', { id: 'drag-ghost', 'aria-hidden': 'true' }, [icon('mail')]);
+      this.kind = 'mail';
       this.blank = el('div', { id: 'drag-blank' });
       document.body.append(this.node, this.blank);
       document.addEventListener('dragover', (ev) => this.move(ev), true);
@@ -2385,6 +2387,7 @@ const dragGhost = {
       document.addEventListener('drop', () => this.stop(), true);
       document.addEventListener('dragend', () => this.stop(), true);
     }
+    if (this.kind !== kind) { this.node.replaceChildren(icon(kind)); this.node.classList.toggle('task-ghost', kind === 'check'); this.kind = kind; }
     e.dataTransfer.setDragImage(this.blank, 0, 0);
     this.active = true;
     this.move(e);
@@ -5387,6 +5390,7 @@ function renderTask(t, finished, tagColor = null) {
     e.dataTransfer.setData(TASK_DRAG, t.id);
     e.dataTransfer.effectAllowed = 'move';
     card.classList.add('dragging');
+    dragGhost.start(e, 'check');   // a see-through checkmark follows the pointer, like the envelope for an email (Paul, 2026-11-09)
     if (!card.closest('.task-col:not(.all-col)')) return;   // the gap only on one project's board
     taskDrag.id = t.id; taskDrag.card = card;
     taskDrag.ph.style.height = card.offsetHeight + 'px';
@@ -5682,8 +5686,9 @@ function taskCardParts(t, { finished = false, finish = null, tagColor = null } =
   const del = el('button', { type: 'button', class: 'task-delete', title: 'Delete task', 'aria-label': `Delete task: ${t.title}` }, xIcon());
   del.addEventListener('click', (e) => { e.stopPropagation(); askDeleteTask(t.id); });
   if (t.collapsed) {   // one line: the name, the bell, when it's due, ✓ and the red ✕ always there (Paul, 2026-11-08)
-    return [el('div', { class: 'top' }, [el('span', { class: 'task-head task-title' }, t.title), t.alarm != null ? bellIcon() : null,
-      t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, taskWhenText(t)) : null, finish, del])];
+    // the name always shows; when there's no room beside it, the date goes underneath (Paul, 2026-11-09)
+    return [el('div', { class: 'top' }, [el('div', { class: 'task-line' }, [el('span', { class: 'task-head task-title' }, t.title),
+      t.due ? el('time', { class: 'task-when' + (late ? ' late' : '') }, taskWhenText(t)) : null]), t.alarm != null ? bellIcon() : null, finish, del])];
   }
   const desc = t.notes ? el('div', { class: 'task-desc' }, linkify(t.notes)) : null;
   const people = t.people?.length ? el('div', { class: 'task-people' }, [el('span', { class: 'colab' }, 'CoLab:\u00a0\u00a0'),

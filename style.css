@@ -203,6 +203,7 @@ a.nav-main { color: var(--text); text-decoration: none; }
 #drag-ghost { position: fixed; left: 0; top: 0; z-index: 9999; padding: 14px 0 0 14px; pointer-events: none; }
 #drag-ghost[hidden] { display: none; }
 #drag-ghost svg { display: block; width: 44px; height: 44px; fill: var(--accent); opacity: .55; }
+#drag-ghost.task-ghost svg { fill: #3cbe5f; opacity: .7; }   /* the green of the task ✓ */
 #drag-blank { position: fixed; left: -10px; top: -10px; width: 1px; height: 1px; }
 .card .top { display: flex; align-items: baseline; gap: .4rem; }
 .card .people { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -711,6 +712,9 @@ body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picke
 .card.task-card.collapsed .task-head { font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card.task-card.collapsed .task-bell { font-size: 1.05rem; }
 .card.task-card.collapsed .task-when { margin: 0; flex: none; font-size: .77rem; }
+/* folded card: name first and never squeezed out; the date wraps under it when short of room (Paul, 2026-11-09) */
+.card.task-card.collapsed .task-line { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: .5rem; row-gap: .1rem; }
+.card.task-card.collapsed .task-line .task-head { flex: 1 0 auto; max-width: 100%; }
 .card.task-card.collapsed .task-finish { width: 30px; min-height: 30px; height: 30px; font-size: 1rem; }   /* the ✓ is in the top row now, not over the right edge */
 .task-people { font-size: .85rem; color: var(--muted); margin-top: .2rem; }
 dialog.task-edit h2 { margin: 0 0 .8rem; font-size: 1.2rem; }
@@ -729,8 +733,8 @@ a.live-link { color: var(--accent); text-decoration: underline; overflow-wrap: a
 dialog.task-edit select { min-height: 40px; font: inherit; padding: 0 .6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
 dialog.task-edit .error:empty { display: none; }
 /* StediTask: Board / Timeline where Compose and Download are in the mail (Paul, 2026-11-08) */
-.task-views { display: none; gap: 6px; }
-body.tasks-on .bar .task-views { display: inline-flex; }
+.task-views { display: none; gap: 12px; }   /* a little more room between Board and Timeline (Paul, 2026-11-09) */
+body.tasks-on .bar .task-views { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; }   /* Board as wide as Timeline */
 body.tasks-on #btn-compose, body.tasks-on #btn-downloads { display: none !important; }
 /* Search tasks sits where Search mail does, same size (Paul, 2026-11-09) */
 .task-search-box { display: none; }
