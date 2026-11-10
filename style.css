@@ -766,8 +766,8 @@ body.tasks-on .task-search-box { display: block; }
 .gantt .ghead, .gantt .ghead .glabel { background: #000; color: #fff; }
 .gantt .ghead .glabel { justify-content: center; }
 /* outlined, a bit taller, dates twice the size (Paul, 2026-11-09) */
-.gantt .ghead { min-height: 56px; box-shadow: inset 0 2px 0 #8a8f98, inset 0 -2px 0 #8a8f98, inset -2px 0 0 #8a8f98; }
-.gantt .ghead .glabel { box-shadow: inset 0 2px 0 #8a8f98, inset 0 -2px 0 #8a8f98, inset 2px 0 0 #8a8f98; }
+.gantt .ghead { min-height: 56px; box-shadow: inset 0 4px 0 #8a8f98, inset 0 -4px 0 #8a8f98, inset -4px 0 0 #8a8f98; }
+.gantt .ghead .glabel { box-shadow: inset 0 4px 0 #8a8f98, inset 0 -4px 0 #8a8f98, inset 4px 0 0 #8a8f98; }
 .gantt .ghead .gweek { top: auto; bottom: 12px; line-height: 1; padding-left: 12px; font-size: 1.625rem; color: #fff; }
 .gantt .gproj, .gantt .gproj .glabel { background: color-mix(in srgb, var(--pc) 12%, var(--panel)); }
 .gantt .gproj .glabel { color: var(--pc); }
@@ -850,3 +850,5 @@ dialog.task-edit .spacer { flex: 1; }
 /* bigger words in the Task column: names 1.2rem, "Task" title the size of the dates (Paul, 2026-11-09) */
 .gantt .glabel { font-size: 1.35rem; }
 .gantt .ghead .glabel { font-size: 1.625rem; font-weight: 400; letter-spacing: .08em; }
+/* the line between the names and the weeks: black (Paul, 2026-11-09) */
+.gantt .glabel { border-right-color: #000; }

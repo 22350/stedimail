@@ -4979,17 +4979,30 @@ function renderAllColumns(list) {
   const order = [...middle.filter((c) => !lasts.includes(c)), ...lasts];
   const names = list.map((p) => p.name);
   const items = tasksData().items.filter((t) => names.includes(t.project) && taskMatches(t));
+  const sorts = store.get('allTaskSorts', {});   // sort per column on All projects (Paul, 2026-11-09)
   return order.map((col) => {
-    const here = items.filter((t) => t.col === col);
+    const sort = TASK_SORTS.find((x) => x.key === sorts[col]) || TASK_SORTS[0];
+    let here = items.filter((t) => t.col === col);
+    if (sort.cmp) here = [...here].sort(sort.cmp);
+    const sortBtn = iconButton(`Sort: ${sort.label}`, 'sort', (b) => openMenu(b, [
+      { heading: 'Sort' },
+      ...TASK_SORTS.map((x) => ({ label: x.label, checked: x.key === sort.key, run: () => { store.set('allTaskSorts', { ...store.get('allTaskSorts', {}), [col]: x.key }); renderTasks(); } })),
+    ]));
+    if (sort.key !== 'mine') sortBtn.classList.add('on');
+    sortBtn.classList.add('boxed', 'steady-aim-left');
+    // green + back in the To do header (Paul, 2026-11-09)
+    const plus = col === order[0] ? addTaskButton('Add a task', () => openTaskDialog({ project: GENERAL, col }), 'plus') : null;
+    const cards = el('div', { class: 'cards' }, here.map((t) => renderTask(t, isFinishedTask(t), projectColor(t.project, list))));
     const node = el('section', { class: 'column task-col all-col', 'data-col': col }, [
-      el('h2', {}, [el('span', { class: 'colname', title: col }, col), el('span', { class: 'count' }, String(here.length))]),   // no green + in the header (Paul, 2026-11-09)
-      el('div', { class: 'cards' }, here.map((t) => renderTask(t, isFinishedTask(t), projectColor(t.project, list)))),
+      el('h2', {}, [el('span', { class: 'colname', title: col }, col), el('span', { class: 'count' }, String(here.length)), plus, sortBtn]),
+      cards,
     ]);
     node.append(...resizeHandles(node));
     node.addEventListener('dragover', (e) => {
       if (!e.dataTransfer.types.includes(TASK_DRAG)) return;
       e.preventDefault();
       node.classList.add('drop');
+      if (taskDrag.card && !sort.cmp) placeTaskGap(cards, e.clientY);   // drop it between tasks, not only at the end (Paul, 2026-11-09)
     });
     node.addEventListener('dragleave', (e) => { if (!node.contains(e.relatedTarget)) node.classList.remove('drop'); });
     node.addEventListener('drop', (e) => {
@@ -4999,6 +5012,13 @@ function renderAllColumns(list) {
       node.classList.remove('drop');
       const t = findTask(id);
       if (!taskProject(t.project).columns.includes(col)) { toast(`“${t.project}” has no “${col}” column.`); return; }
+      const ph = taskDrag.ph;
+      if (taskDrag.card && !sort.cmp && ph.parentElement === cards) {   // lands in the gap
+        const sib = (dir) => { let n = ph[dir]; while (n && (n === taskDrag.card || !n.dataset?.task)) n = n[dir]; return n; };
+        const next = sib('nextElementSibling'), prev = sib('previousElementSibling');
+        moveTask(id, col, (next || prev)?.dataset.task, !!next);
+        return;
+      }
       if (t.col !== col) moveTask(id, col);
     });
     return node;
@@ -5206,7 +5226,8 @@ function renderTaskColumn(project, col, last) {
   const remove = p.columns.length > 1 ? iconButton(`Remove column “${col}”`, null, () => removeTaskColumn(project, col), xIcon()) : null;
   remove?.classList.add('boxed');
   (remove || sortBtn).classList.add('steady-aim-left');
-  const head = el('h2', {}, [el('span', { class: 'colname', title: col }, col), el('span', { class: 'count' }, String(items.length)), sortBtn, remove]);   // no green + (Paul, 2026-11-09)
+  const plus = col === p.columns[0] ? addTaskButton(`Add a task to ${project}`, () => openTaskDialog({ project, col }), 'plus') : null;   // green + back (Paul, 2026-11-09)
+  const head = el('h2', {}, [el('span', { class: 'colname', title: col }, col), el('span', { class: 'count' }, String(items.length)), plus, sortBtn, remove]);
   // "+ Add task" only at the bottom of the first column (To do) (Paul, 2026-11-09)
   const add = col === p.columns[0] ? el('button', { type: 'button', class: 'add-task' }, '+ Add task') : null;
   add?.addEventListener('click', () => openTaskDialog({ project, col }));
