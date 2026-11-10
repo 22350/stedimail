@@ -1,0 +1,849 @@
+:root {
+  --bg: #f4f5f7; --panel: #fff; --col: #e9ebef; --text: #1b1d21; --muted: #666b74;
+  --border: #d5d8de; --accent: #2f6fde; --accent-text: #fff; --drop: #d6e4ff;
+  --unread: #2f6fde; --shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c; --panel: #22252b; --col: #1c1f24; --text: #e6e8eb; --muted: #9aa0aa;
+    --border: #33373f; --accent: #5b8ff0; --accent-text: #fff; --drop: #24365a;
+    --unread: #7aa5ff; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column;
+}
+button {
+  font: inherit; padding: .5rem .9rem; min-height: 40px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text);
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+button.big { font-size: 1.1rem; padding: .8rem 1.4rem; }
+input, textarea {
+  font: inherit; color: var(--text); background: var(--panel); width: 100%;
+  border: 1px solid var(--border); border-radius: 8px; padding: .5rem .7rem;
+}
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+a { color: var(--accent); }
+
+.bar {
+  display: flex; align-items: center; gap: .6rem; padding: .6rem 1rem;
+  background: var(--bar-bg); color: var(--bar-text);
+}
+/* Equal sides, so the search box between them sits in the middle of the window */
+.bar-side { flex: 1 1 0; display: flex; align-items: center; gap: .6rem; }
+.bar .status { white-space: nowrap; }
+.bar h1 { font-size: 1.15rem; margin: 0 .895rem 0 .635rem; padding: .57rem 0; line-height: 0; }
+/* The StediMail logo (white), 30% larger again (Paul, 2026-11-04) */
+.bar h1 .logo { display: block; height: 2.35rem; width: auto; }
+.bar .status { color: var(--bar-muted); }
+.bar button {
+  background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.22); color: var(--bar-text);
+}
+.bar button:hover:not(:disabled) { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.45); }
+.bar .search-box input {
+  background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.22); color: var(--bar-text);
+}
+.bar .search-box input::placeholder { color: var(--bar-muted); }
+.bar :focus-visible { outline-color: #d9e8a6; }
+.status { color: var(--muted); font-size: .9rem; }
+.search-box { flex: 0 1 360px; min-width: 0; }
+/* Refresh: a square arrow just left of the search box (Paul, 2026-11-03); Settings: square gear (2026-11-08) */
+.bar #btn-refresh, .bar #btn-downloads, .bar #btn-settings, .bar #btn-tasks { width: 38px; height: 38px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  font-size: 1.35rem; line-height: 1; border-radius: 8px; flex: 0 0 auto; }
+.bar #btn-refresh[hidden], .bar #btn-downloads[hidden], .bar #btn-tasks[hidden] { display: none; }
+/* Same red as Unsubscribe */
+.bar #btn-downloads.unseen { background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); }
+.bar #btn-downloads.unseen:hover { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
+.search-box input { padding: .45rem .8rem; border-radius: 20px; }
+.column.search { border: 2px dashed var(--accent); }
+.column.search h2 .q { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.column.search h2 .count { margin-left: auto; }
+.column.search .icon-btn { width: 48px; min-height: 40px; }
+.column .hint { padding: 0 .4rem; }
+.card .where {
+  font-size: .75rem; color: var(--muted); white-space: nowrap;
+  border: 1px solid var(--border); border-radius: 10px; padding: 0 .45rem;
+}
+.spacer { flex: 1; }
+.search-row-break { display: none; }
+.banner { background: #fff3cd; color: #5c4400; padding: .6rem 1rem; display: flex; gap: 1rem; align-items: center; }
+
+.main-row { flex: 1; display: flex; min-height: 0; }
+.board { flex: 1; min-width: 0; display: flex; gap: 1rem; padding: 1rem; overflow-x: auto; min-height: 0; }
+.menu-btn { font-size: 1.2rem; padding: .3rem .7rem; }
+
+.sidebar {
+  flex: 0 0 236px; overflow-y: auto; padding: .6rem .5rem .6rem 0;
+  background: var(--panel); border-right: 1px solid var(--border);
+}
+.nav-item { display: flex; align-items: center; border-radius: 0 18px 18px 0; }
+.nav-item:hover { background: var(--col); }
+.nav-item.active { background: var(--drop); }
+.nav-main, .nav-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: .85rem; min-height: 34px;
+  padding: .3rem .5rem .3rem 1.1rem; border: 0; border-radius: inherit;
+  background: transparent; text-align: left; font-size: .92rem;
+}
+.nav-main:hover:not(:disabled) { background: transparent; }
+a.nav-main { color: var(--text); text-decoration: none; }
+.nav-demo { margin: .5rem -.5rem .25rem 0; border-radius: 0; background: rgba(220, 60, 60, .22); }
+.nav-demo:hover { background: rgba(220, 60, 60, .34); }
+.nav-demo .nav-main { justify-content: center; gap: .4rem; min-height: 38px; padding: .3rem .5rem; border-radius: 0; font-weight: 600; }
+.nav-demo .nav-main svg { fill: var(--text); }
+.nav-demo .nav-name { flex: none; }
+.nav-main svg { width: 20px; height: 20px; flex: none; fill: var(--muted); }
+.nav-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-main .n { font-size: .8rem; }
+.nav-item.has-count .nav-main, .nav-item.active .nav-main { font-weight: 700; }
+.nav-item.active .nav-main svg { fill: var(--text); }
+.nav-menu {
+  width: 30px; min-height: 30px; padding: 0; margin-right: .3rem; flex: none;
+  border: 0; border-radius: 50%; background: transparent; color: var(--muted);
+  font-size: 1.1rem; visibility: hidden;
+}
+.nav-item:hover .nav-menu, .nav-item:focus-within .nav-menu { visibility: visible; }
+.nav-menu:hover:not(:disabled) { background: var(--border); }
+.nav-item.drop { background: var(--drop); box-shadow: inset 0 0 0 1px var(--accent); }
+.nav-toggle { width: 100%; color: var(--muted); border-radius: 0 18px 18px 0; }
+.nav-toggle:hover:not(:disabled) { background: var(--col); }
+.nav-toggle .chev { width: 20px; text-align: center; }
+.nav-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-weight: 600; padding: 1rem .4rem .3rem 1.1rem;
+}
+.nav-head .icon-btn { font-size: 1.3rem; }
+
+.menu {
+  position: fixed; z-index: 30; min-width: 220px; padding: .4rem 0;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.2);
+}
+.menu.downloads { width: min(420px, calc(100vw - 16px)); max-height: 60vh; overflow-y: auto; }
+.menu.downloads .row { display: flex; align-items: center; gap: .75rem; padding-right: .5rem; }
+.menu.downloads .menu-item { flex: 1; min-width: 0; display: flex; align-items: center; gap: .6rem; }
+.menu.downloads .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.menu.downloads time { flex: none; color: var(--muted); font-size: .8rem; }
+.menu.downloads .open-email { flex: none; width: 40px; min-height: 40px; padding: 0; display: grid; place-items: center; background: transparent; border-color: transparent; color: var(--muted); }
+.menu.downloads .open-email:hover { background: var(--col); color: var(--text); }
+.menu.downloads .open-email svg { width: 22px; height: 22px; fill: currentColor; }
+.menu hr { border: 0; border-top: 1px solid var(--border); margin: .35rem 0; }
+.menu-head { padding: .35rem 1rem; font-size: .85rem; color: var(--muted); }
+.menu-item {
+  display: flex; gap: .5rem; width: 100%; min-height: 34px; padding: .35rem 1rem;
+  border: 0; border-radius: 0; background: transparent; text-align: left;
+}
+.menu-item:hover:not(:disabled) { background: var(--col); }
+.menu-item .tick { width: 1.1rem; color: var(--accent); }
+.menu-swatches { display: flex; flex-wrap: wrap; gap: .35rem; padding: .2rem 1rem .4rem; }
+.menu-swatches .swatch { width: 28px; min-height: 28px; }
+@media (max-width: 800px) {
+  .sidebar { position: fixed; top: var(--bar-h, 56px); bottom: 0; left: 0; z-index: 9; width: 236px; box-shadow: 4px 0 16px rgba(0,0,0,.2); }
+}
+.column {
+  /* min-width 0: without it a column widens to fit whichever card the pointer is on (Paul, 2026-11-06) */
+  flex: 1 0 320px; min-width: 0; max-width: 420px; display: flex; flex-direction: column; min-height: 0;
+  background: var(--col); border-radius: 12px; border: 2px solid transparent;
+}
+.column.drop { background: var(--drop); border-color: var(--accent); }
+.column h2 { font-size: 1rem; margin: 0; padding: .1rem .625rem;   /* same gap both sides of the header row; halved (Paul, 2026-11-09) */ display: flex; gap: .5rem; align-items: center; }
+.column h2 { background: var(--bar-bg); color: var(--bar-text); border-radius: 10px 10px 0 0; margin-bottom: .6rem; }
+/* Header bars never shorter than one whose name runs to two lines (Paul, 2026-11-08) */
+.column h2 { min-height: calc(2lh + .2rem); }
+.column .count { margin-left: auto; color: var(--bar-muted); font-weight: normal; }
+.column h2 .colname, .column h2 .q { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* too narrow → "…" (Paul, 2026-11-09) */
+.column h2 > * { flex-shrink: 0; }
+.column h2 > .colname, .column h2 > .q { flex-shrink: 1; }
+.column h2 .icon-btn { flex: none; width: 48px; min-height: 40px; font-size: 1.5rem; color: var(--bar-text); opacity: .65; }
+.column h2 .icon-btn svg { width: 31px; height: 31px; }
+.column h2 .icon-btn:hover:not(:disabled) { opacity: 1; background: rgba(255,255,255,.14); }
+.column h2 .icon-btn.on { opacity: 1; color: #9fbf5a; }
+.column h2 .pick { accent-color: #9fbf5a; }
+.column h2.grab { cursor: grab; }
+.column.dragging-col { opacity: .45; }
+.column.insert-before { box-shadow: -11px 0 0 0 #9fbf5a; }
+.column.insert-after { box-shadow: 11px 0 0 0 #9fbf5a; }
+#col-ghost { position: fixed; left: 0; top: 0; z-index: 9999; margin: 0; max-height: 460px; overflow: hidden; opacity: .72; pointer-events: none;
+  box-shadow: 0 18px 44px rgba(0,0,0,.65); outline: 2px solid #9fbf5a; }
+.add-column { flex: 0 0 auto; display: flex; align-items: flex-start; }
+.add-btn {
+  width: 52px; min-height: 52px; font-size: 1.7rem; line-height: 1; border-radius: 12px;
+  border: 2px dashed var(--border); background: transparent; color: var(--muted);
+}
+.add-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.add-column input { width: 260px; }
+.add-column:has(.first) { flex-direction: column; gap: 8px; max-width: 280px; }
+.add-btn.first { width: auto; padding: 10px 18px; font-size: 16px; font-weight: 600; border-radius: 10px; }
+.add-hint { margin: 0; font-size: 14px; opacity: .75; line-height: 1.4; }
+.cards { flex: 1; min-width: 0; overflow-y: auto; padding: 6px .6rem .6rem;   /* 6px: a selected card's outline isn't cut off at the top */ display: flex; flex-direction: column; gap: .5rem; }
+
+.card {
+  position: relative;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: .7rem .85rem; box-shadow: var(--shadow); cursor: pointer; user-select: none;
+}
+.card.open { border-color: var(--accent); }
+.card.dragging { opacity: .4; }
+/* the gap a dragged task card will land in (Paul, 2026-11-09) */
+.task-ph { flex: none; border: 2px dashed var(--accent); border-radius: 10px; opacity: .6; box-sizing: border-box; }
+.card.nested { margin-left: 1.5rem; border-left: 3px solid var(--accent); }
+.card.nest-target { outline: 3px solid var(--accent); outline-offset: 1px; background: var(--drop); }
+.card.nest-target::after {
+  content: 'Drop to nest under this'; position: absolute; right: .5rem; bottom: .35rem; z-index: 2; padding: .1rem .5rem;
+  font-size: .8rem; color: var(--accent-text); background: var(--accent); border-radius: 6px; pointer-events: none;
+}
+.card .nest-toggle {
+  width: auto; min-width: 44px; min-height: 32px; padding: 0 .5rem; flex: none; font-size: 1rem; white-space: nowrap;
+  color: var(--accent); border: 1px solid var(--border); border-radius: 7px; background: transparent;
+}
+#drag-ghost { position: fixed; left: 0; top: 0; z-index: 9999; padding: 14px 0 0 14px; pointer-events: none; }
+#drag-ghost[hidden] { display: none; }
+#drag-ghost svg { display: block; width: 44px; height: 44px; fill: var(--accent); opacity: .55; }
+#drag-ghost.task-ghost svg { fill: #3cbe5f; opacity: .7; }   /* the green of the task ✓ */
+#drag-blank { position: fixed; left: -10px; top: -10px; width: 1px; height: 1px; }
+.card .top { display: flex; align-items: baseline; gap: .4rem; }
+.card .people { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .num, .card time { color: var(--muted); font-size: .8rem; white-space: nowrap; }
+.card .body {
+  margin-top: .2rem; font-size: .875rem; color: var(--muted); overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.card .subj { color: var(--text); }
+.card .clip { display: flex; align-items: center; gap: .2rem; margin-top: .3rem; color: var(--muted); font-size: .8rem; }
+.card .clip svg { width: 14px; height: 14px; fill: currentColor; }
+.card.unread .people, .card.unread .subj { font-weight: 700; }
+.card.colored { border-left: 6px solid var(--card-color); }
+.pick { width: 18px; height: 18px; margin: 0; flex: none; cursor: pointer; accent-color: var(--accent); align-self: center; }
+.card .pick { display: none; }
+.card:hover .pick, .card:focus-within .pick, .board.selecting .card .pick { display: inline-block; }
+.card.selected { background: var(--drop); border-color: var(--accent); }
+
+.bulk {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 15;
+  display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center;
+  width: max-content; max-width: calc(100% - 32px); padding: .5rem .8rem;
+  background: var(--panel); border: 2px solid var(--accent); border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.25);
+}
+.bulk-info { font-weight: 600; }
+.bulk-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.bulk select {
+  font: inherit; min-height: 40px; padding: 0 .5rem; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+}
+.link-btn {
+  min-height: 0; padding: 0; border: 0; background: none; color: var(--accent);
+  text-decoration: underline; font-weight: 600;
+}
+
+.color-pop {
+  position: fixed; z-index: 30; display: flex; gap: .4rem; padding: .5rem;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.2);
+}
+.swatch {
+  width: 36px; min-height: 36px; padding: 0; border-radius: 50%;
+  background: var(--swatch); border: 2px solid transparent;
+}
+.swatch:hover:not(:disabled) { border-color: var(--text); }
+.swatch.current { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--text); }
+.swatch.none { background: var(--col); color: var(--muted); }
+.color-btn { display: inline-flex; align-items: center; gap: .35rem; }
+.color-btn svg { width: 18px; height: 18px; fill: var(--swatch, currentColor); }
+.card-actions {
+  position: absolute; top: .35rem; right: .35rem; display: none; gap: .15rem;
+  background: var(--panel); padding-left: .4rem; border-radius: 8px;
+}
+.card:hover .card-actions, .card:focus-within .card-actions { display: flex; }
+/* Bigger hover buttons on cards, easier to hit (Paul, 2026-11-03): 34 → 42 px, icons 18 → 23 px */
+.card-actions { gap: .15rem; top: .15rem; right: .2rem; padding: .05rem .1rem .05rem .3rem;
+  /* see-through, so the sender and subject underneath stay readable (Paul, 2026-11-03) */
+  background: color-mix(in srgb, var(--panel) 40%, transparent); }
+.card-actions .icon-btn { opacity: .85; }
+.card-actions .icon-btn:hover:not(:disabled), .card-actions .icon-btn:focus-visible {
+  opacity: 1; background: color-mix(in srgb, var(--col) 85%, transparent); }
+.card-actions .icon-btn { width: 36px; min-height: 36px; border-radius: 8px; }   /* less space round the 23 px icons */
+.card-actions .icon-btn svg { width: 23px; height: 23px; }
+/* A blank strip across the top of each card where those buttons appear, so they never cover the sender
+   or subject (Paul, 2026-11-03). Touch screens show them below the text instead, so no strip there. */
+@media (hover: hover) {
+  .card { padding-top: calc(36px + .45rem); }
+}
+/* A card's own label, in that strip. The hover buttons float over it, as over everything else, except
+   while typing. An empty one only shows on hover, with the buttons. */
+.card-label {
+  height: 36px; padding: 0 .35rem; border: 1px solid transparent; background: transparent;
+  font-size: .95rem; font-weight: 600; text-overflow: ellipsis; cursor: text;
+}
+.card-label::placeholder { color: rgba(0, 0, 0, .5); font-weight: 400; }
+@media (prefers-color-scheme: dark) {
+  .card-label::placeholder { color: rgba(255, 255, 255, .5); }
+}
+.card-label:focus { border-color: var(--accent); background: var(--panel); outline: none; }
+.card .card-label:focus ~ .card-actions { display: none; }
+@media (hover: hover) {
+  .card-label { position: absolute; top: .15rem; left: .5rem; width: calc(100% - .7rem); }
+  .card-label:placeholder-shown { display: none; }
+  .card:hover .card-label, .card .card-label:focus { display: block; }   /* stays open while typing, wherever the mouse goes */
+}
+@media (hover: none) {
+  .card-actions { position: static; display: flex; justify-content: flex-end; margin-top: .3rem; }
+}
+.icon-btn {
+  width: 34px; min-height: 34px; padding: 0; display: grid; place-items: center;
+  background: transparent; border-color: transparent; color: var(--muted);
+}
+.icon-btn:hover:not(:disabled) { background: var(--col); border-color: transparent; color: var(--text); }
+.icon-btn svg { width: 19px; height: 19px; fill: currentColor; }
+
+.center {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1rem; padding: 1rem; width: 100%; max-width: 520px; margin: 0 auto; text-align: center;
+}
+
+.reader {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(var(--reader-w, 760px), 100%); z-index: 10;
+  background: var(--panel); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,.15);
+  overflow-y: auto; padding: 1rem 1.2rem; display: flex; flex-direction: column; gap: 1rem;
+}
+.reader-head { display: flex; gap: 1rem; align-items: flex-start; }
+.reader-head h2 { flex: 1; margin: 0; font-size: 1.25rem; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.actions .row-break { flex-basis: 100%; height: 0; }
+.actions .label { color: var(--muted); font-size: .9rem; }
+.actions button.current { background: var(--accent); border-color: var(--accent); color: var(--accent-text); opacity: 1; }
+/* Open email: the pinned icon row (Snooze, Archive, Spam, Delete, Read/Unread) in the translucent red of the red ✕ (Paul, 2026-11-09) */
+#reader-actions .icon-btn { background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); color: var(--text); }
+#reader-actions .icon-btn:hover:not(:disabled) { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); color: var(--text); }
+.message { border: 1px solid var(--border); border-radius: 10px; padding: .6rem .8rem; }
+.message summary { cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: .2rem .8rem; }
+.earlier-btn { display: block; width: 100%; text-align: left; margin: 0 0 .5rem; min-height: 38px; padding: 0 .8rem;
+  font-weight: 600; color: var(--muted); background: var(--col); border: 1px dashed var(--border); border-radius: 8px; cursor: pointer; }
+.earlier-btn:hover { color: var(--text); }
+.earlier { border-left: 3px solid var(--border); padding-left: .5rem; margin-bottom: .6rem; }
+.message summary .snippet { grid-column: 1 / -1; color: var(--muted); font-size: .85rem; }
+.message[open] summary .snippet { display: none; }
+.message time { color: var(--muted); font-size: .85rem; }
+.addr { color: var(--muted); font-size: .85rem; margin: .5rem 0; overflow-wrap: anywhere; }
+iframe.body { width: 100%; min-height: 60px; border: 0; border-radius: 6px; background: #fff; display: block; }
+.files { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+.reply, .compose { display: flex; flex-direction: column; gap: .5rem; }
+.row { display: flex; gap: .5rem; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.check { display: flex; gap: .4rem; align-items: center; }
+.check input { width: auto; }
+.hint { color: var(--muted); font-size: .9rem; margin: 0; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%); z-index: 20;
+  background: #222; color: #fff; padding: .7rem 1rem; border-radius: 10px;
+  display: flex; gap: 1rem; align-items: center; box-shadow: 0 4px 16px rgba(0,0,0,.3);
+  max-width: calc(100% - 32px);
+}
+.toast button { background: transparent; color: #9cc0ff; border-color: #555; }
+
+dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); width: min(520px, calc(100% - 32px)); }
+dialog form { display: flex; flex-direction: column; gap: .9rem; }
+dialog label { display: flex; flex-direction: column; gap: .3rem; }
+dialog label.check { flex-direction: row; }
+dialog label.check[hidden], dialog .ask-buttons button[hidden] { display: none; }
+dialog .field { display: flex; flex-direction: column; gap: .4rem; }
+.col-list { display: flex; flex-direction: column; gap: .4rem; }
+.col-row { display: flex; gap: .25rem; align-items: center; }
+.col-row input { flex: 1; min-width: 0; }
+.col-row.inbox .hint { white-space: nowrap; padding: 0 .4rem; }
+.add-col { align-self: flex-start; }
+.error { color: #d33; margin: 0; }
+.error:empty { display: none; }
+dialog h2 { margin: 0; }
+
+@media (max-width: 640px) {
+  .board { scroll-snap-type: x mandatory; }
+  .column { flex-basis: 85vw; scroll-snap-align: start; }
+  .bar h1 { display: none; }
+}
+
+/* Column resizing: grab handles at each column's top corners set one width for all columns. */
+.column { position: relative; }
+body.cols-sized .column { flex: 0 0 var(--col-w); max-width: none; width: var(--col-w); }
+/* A minimized column: a strip with its name running down it, letters' feet to the left. */
+.column h2 { user-select: none; }
+@media (min-width: 641px) {
+  .column.collapsed, body.cols-sized .column.collapsed { flex: 0 0 auto; width: auto; max-width: none; background: var(--bar-bg); overflow: hidden; }
+  .column.collapsed.drop { background: var(--drop); }
+  .column.collapsed > :not(h2), .column.collapsed h2 > * { display: none; }
+  /* …except the add-task button, under the column's name (Paul, 2026-11-08) */
+  .column.collapsed h2 > :not(.add-task-btn, .colname) { display: none !important; }   /* the boxed sort and ✕ too; the name stays */
+  .column.collapsed h2 > .colname { display: inline; overflow: visible; }
+  .column.collapsed h2 > .add-task-btn { display: inline-grid; writing-mode: horizontal-tb; margin-top: .4rem; }
+  .column.collapsed h2 { flex: 1; min-height: 0; margin: 0; padding: .7rem .3rem; writing-mode: vertical-rl; white-space: nowrap; background: transparent; color: var(--bar-text); }
+  .column.collapsed.drop h2 { color: var(--text); }
+  .column.collapsed.new-mail, .column.collapsed.new-mail h2 { background: #c62828; color: #fff; }
+}
+.col-resize {
+  position: absolute; top: -2px; width: 1rem; height: calc(39px + 1.6rem); z-index: 2; cursor: ew-resize; touch-action: none;
+  border-radius: 6px; opacity: 0; transition: opacity .15s;
+}
+/* Each handle fills the whole gap beside the header. A gap belongs to the column on its left, so dragging
+   right always widens; the next column's left handle only keeps its own edge, unless that column is minimized. */
+.col-resize.left { left: calc(-2px - 1rem); }
+.col-resize.right { right: calc(-2px - 1rem); }
+.column:not(.collapsed) + .column .col-resize.left { display: none; }
+.col-resize::after {
+  content: ''; position: absolute; bottom: 3px; height: 22px; left: calc(50% - 2px); width: 4px; border-radius: 2px; background: var(--accent);
+}
+.column:hover .col-resize, .col-resize:active, body.col-resizing .col-resize { opacity: .8; }
+body.col-resizing, body.col-resizing * { cursor: ew-resize !important; user-select: none; }
+
+/* Opened-email panel: drag its left edge to widen it (or use the wider button in its header). */
+.reader-resize {
+  position: fixed; top: 0; bottom: 0; z-index: 11; width: 10px; cursor: ew-resize; touch-action: none;
+  right: calc(min(var(--reader-w, 760px), 100%) - 5px);
+}
+.reader-resize::after {
+  content: ''; position: absolute; top: 50%; left: 3px; width: 4px; height: 56px; margin-top: -28px;
+  border-radius: 2px; background: var(--accent); opacity: 0; transition: opacity .15s;
+}
+.reader-resize:hover::after, body.reader-resizing .reader-resize::after { opacity: .8; }
+.reader[hidden] + .reader-resize { display: none; }
+/* Title bar and the Move to / icon rows stay put together while the email scrolls (Paul, 2026-11-05). */
+.reader-top { position: sticky; top: -1rem; z-index: 3; margin: -1rem -1.2rem 0; padding: 0 1.2rem .6rem; display: flex; flex-direction: column;
+  gap: .6rem; background: var(--panel); border-bottom: 1px solid var(--border); }
+.reader-top .reader-head { position: static; margin: 0 -1.2rem; }
+body.reader-resizing, body.reader-resizing * { cursor: ew-resize !important; user-select: none; }
+
+/* Opened email: title bar stays at the top while the email scrolls; ESC hint next to the close button. */
+.reader-head {
+  position: sticky; top: -1rem; z-index: 3; margin: -1rem -1.2rem 0; padding: 1rem 1.2rem .7rem;
+  background: var(--panel); border-bottom: 1px solid var(--border); align-items: center;
+}
+.esc-hint {
+  font: 600 .72rem/1 ui-monospace, monospace; color: var(--muted); letter-spacing: .05em;
+  border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: .3rem .45rem; flex: none;
+}
+
+/* Reply box: Reply all / Reply only, who it goes to, editor, Gmail-style controls at the bottom. */
+.reply { border: 1px solid var(--border); border-radius: 10px; padding: .7rem; gap: .55rem; }
+.reply-modes { display: flex; gap: .4rem; }
+.reply-modes button.current { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.reply-who { font-size: .9rem; color: var(--muted); overflow-wrap: anywhere; }
+.reply-editor {
+  min-height: 150px; max-height: 50vh; overflow-y: auto; padding: .6rem .7rem; outline: none;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); line-height: 1.45;
+}
+.reply-editor:focus { border-color: var(--accent); }
+.reply-editor:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
+.reply-editor a { color: var(--accent); }
+.reply-files { display: flex; flex-wrap: wrap; gap: .4rem; }
+.reply-files:empty { display: none; }
+.reply-files .chip { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .3rem .2rem .6rem; border: 1px solid var(--border); border-radius: 14px; font-size: .85rem; }
+.reply-files .chip.failed { border-color: #d93025; }
+.reply-files .chip button { width: 24px; min-height: 24px; padding: 0; border: none; background: transparent; color: var(--muted); }
+.reply-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.reply-tools .tool { width: 36px; min-height: 36px; padding: 0; font-size: 1rem; }
+.reply-tools .tool.word { width: auto; padding: 0 .6rem; font-size: .9rem; white-space: nowrap; }
+.reply-tools .tool.b { font-weight: 700; } .reply-tools .tool.i { font-style: italic; } .reply-tools .tool.u { text-decoration: underline; }
+.reply-tools .tool svg { display: block; margin: auto; width: 20px; height: 20px; fill: currentColor; }
+.reply-tools .tool.listening, .dictate-center.listening, .dictate-center.listening:hover { background: #d93025; border-color: #d93025; color: #fff; }
+.reply-frame { position: relative; }
+.dictate-center { position: absolute; top: 50%; left: 80%; transform: translate(-50%, -50%); display: grid; place-items: center; width: 72px; min-height: 72px; padding: 0; border: 2px solid var(--muted); border-radius: 50%; background: transparent; color: var(--muted); }
+.dictate-center:hover { background: var(--col); color: var(--text); }
+.dictate-center svg { width: 40px; height: 40px; fill: currentColor; }
+.dictate-center[hidden] { display: none; }
+.reply-tools .sep { width: 1px; height: 24px; background: var(--border); margin: 0 .25rem; }
+.emoji-pop { display: grid; grid-template-columns: repeat(8, 36px); gap: .2rem; padding: .4rem; border: 1px solid var(--border); border-radius: 8px; width: max-content; }
+.emoji-pop[hidden] { display: none; }
+.emoji-pop .tool { width: 36px; min-height: 36px; padding: 0; font-size: 1.15rem; background: transparent; border-color: transparent; }
+.compose .reply-editor { min-height: 280px; }
+
+/* Hover an address in an opened email: a light red Copy button appears just above the pointer. */
+.addr-item { cursor: default; border-radius: 3px; }
+.addr-item:hover { color: var(--text); background: rgba(243, 165, 165, .18); }
+#copy-float {
+  position: fixed; z-index: 50; padding: .1rem .55rem; min-height: 0; font-size: .78rem; line-height: 1.5;
+  border-radius: 6px; background: #fde2e2; border: 1px solid #f3a5a5; color: #8a1c1c; box-shadow: 0 2px 6px rgba(0,0,0,.25);
+}
+#copy-float:hover { background: #fbcaca; }
+#copy-float[hidden] { display: none; }
+
+/* Title bar color (Settings): top bar and column headers. Text color is set to match (light or dark). */
+:root { --bar-bg: #373a2b; --bar-text: #eef0e4; --bar-muted: #c3c7b2; }
+.color-row { display: flex; align-items: center; gap: .6rem; }
+.color-row input[type="color"] { width: 64px; height: 40px; padding: 2px 4px; cursor: pointer; }
+
+/* The email (and new message) window's title bar uses the title bar color as well. */
+.reader-head { background: var(--bar-bg); color: var(--bar-text); border-bottom-color: transparent; }
+.reader-head button, .reader-head .icon-btn { color: var(--bar-text); background: transparent; border-color: transparent; }
+.reader-head button:hover:not(:disabled) { background: rgba(127, 127, 127, .22); }
+.reader-head .esc-hint { color: var(--bar-text); border: none; padding: 0; opacity: .9; }
+/* Full width: the same box as Close, the arrow above its word like the X above ESC (Paul, 2026-11-08) */
+.reader-head .reader-widen { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .2rem;
+  min-height: 52px; min-width: 52px; width: auto; padding: .25rem .5rem; border: 1.5px solid var(--bar-muted); border-radius: 8px;
+  line-height: 1; opacity: 1; }
+.reader-head .reader-widen svg { display: block; width: 34px; height: 34px; margin: -7px 0; }   /* the arrow fills only the middle of its box */
+.reader-head .reader-widen:hover:not(:disabled) { background: rgba(127, 127, 127, .22); border-color: var(--bar-text); }
+.reader-head .reader-widen:hover .esc-hint { opacity: 1; }
+/* Close: an X above the ESC key, one button with no visible surround of its own */
+.reader-head .reader-close { flex: none; display: flex; flex-direction: column; align-items: center; gap: .2rem;
+  min-height: 52px; min-width: 52px; justify-content: center; padding: .25rem .5rem; border: 1.5px solid var(--bar-muted); border-radius: 8px; line-height: 1; }
+.reader-head .reader-close svg { display: block; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.reader-head .reader-close:hover:not(:disabled) { background: rgba(127, 127, 127, .22); border-color: var(--bar-text); }
+.reader-head .reader-close:hover .esc-hint { opacity: 1; }
+
+/* Snooze: when a snoozed email comes back (shown on its card), and the date & time picker. */
+.card .snoozed { display: flex; align-items: center; gap: .3rem; font-size: .8rem; color: #b5651d; margin-top: .25rem; }
+.card .snoozed svg { width: 14px; height: 14px; fill: currentColor; }
+.snooze-pick { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); padding: 1rem 1.2rem; }
+.snooze-pick h2 { margin: 0 0 .8rem; font-size: 1.1rem; }
+.snooze-pick .row { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .8rem; }
+.snooze-pick::backdrop { background: rgba(0,0,0,.4); }
+
+/* Search suggestions under the search box, like Gmail's. */
+.search-box { position: relative; }
+.suggest {
+  position: absolute; top: calc(100% + 4px); left: 0; width: max(100%, min(680px, 92vw)); z-index: 40; max-height: 75vh; overflow-y: auto;
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.32); padding: .35rem 0;
+}
+.suggest[hidden] { display: none; }
+.suggest-chips { display: flex; gap: .5rem; flex-wrap: wrap; padding: .5rem .9rem .6rem; border-bottom: 1px solid var(--border); margin-bottom: .25rem; }
+.suggest-chips .chip { border-radius: 8px; padding: .3rem .8rem; font-size: .9rem; background: transparent; }
+.suggest-chips .chip:hover { background: var(--col); }
+.suggest-sep { border-top: 1px solid var(--border); margin: .3rem 0; }
+.suggest-item { display: flex; align-items: center; gap: .9rem; padding: .5rem .9rem; cursor: pointer; }
+.suggest-item:hover, .suggest-item.active { background: var(--col); }
+.suggest-icon { width: 20px; flex: none; display: grid; place-items: center; }
+.suggest-icon svg { width: 18px; height: 18px; fill: var(--muted); }
+.suggest-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.suggest-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest-item > .suggest-label { flex: 1; }
+.suggest-sub { font-size: .82rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest-meta { margin-left: auto; flex: none; display: flex; align-items: center; gap: .4rem; font-size: .82rem; color: var(--muted); }
+.suggest-meta svg { width: 15px; height: 15px; fill: currentColor; }
+/* grey completion after the typed text (Tab accepts) */
+.search-ghost { position: absolute; pointer-events: none; border-style: solid; border-color: transparent; box-sizing: border-box;
+  white-space: pre; overflow: hidden; display: flex; align-items: center; }
+.search-ghost .typed { color: transparent; }
+.search-ghost .rest { color: var(--bar-muted); }
+.search-ghost .tab-hint { margin-left: .5rem; font: 600 .68rem/1 ui-monospace, monospace; padding: .15rem .35rem; border: 1px solid var(--bar-muted); border-radius: 4px; color: var(--bar-muted); }
+
+/* Empty search: "Did you mean" buttons (Gmail only matches whole words). */
+.no-matches { padding: 0 .4rem; }
+.did-you-mean { display: flex; flex-direction: column; align-items: flex-start; gap: .4rem; }
+.did-you-mean button { text-align: left; }
+
+/* To field: contact suggestions under it. */
+.to-wrap { position: relative; }
+.to-wrap .suggest { width: 100%; }
+
+/* Delete key: the first press marks the card; a second press trashes it. */
+.card.delete-armed { outline: 2px solid #e05555; outline-offset: -2px; background: rgba(224, 85, 85, .12); }
+.card .delete-hint { margin-top: .35rem; font-size: .8rem; font-weight: 600; color: #e05555; }
+
+/* The search box may sit mid-window on its own row: suggestions wider than it stay centered under it. */
+@media (max-width: 1100px) {
+  .search-box .suggest { left: 50%; transform: translateX(-50%); }
+}
+/* Too narrow for the search box between the two sides: it takes its own row, rather than shrinking away. */
+@media (min-width: 641px) and (max-width: 1100px) {
+  .bar { flex-wrap: wrap; row-gap: .5rem; }
+  .bar .search-row-break { display: block; order: 9; flex: 0 0 100%; height: 0; }
+  .bar .search-box { order: 10; flex: 0 1 360px; margin-inline: auto; }
+  .bar .status { display: none; }
+}
+
+/* ---------- Phones: two-row top bar, one column per screen (swipe snaps), full-screen email ---------- */
+@media (max-width: 640px) {
+  .bar { flex-wrap: wrap; row-gap: .5rem; padding: .5rem .75rem; }
+  .bar-side { display: contents; }
+  .bar h1 { display: block; font-size: 1.05rem; }
+  .bar h1 .logo { height: 2.1rem; }
+  .bar .status, .bar .spacer { display: none; }
+  .bar h1 { margin-right: auto; }
+  .bar .search-row-break { display: block; order: 9; flex: 0 0 100%; height: 0; }
+  .bar .search-box { order: 10; flex: 0 1 360px; margin-inline: auto; }
+  .bar .col-picker { color: var(--bar-text); }
+  .bar .search-box input { width: 100%; }
+  .suggest { width: calc(100vw - 1.5rem) !important; min-width: 0; }
+  /* Compose / Refresh / Settings become small icon buttons */
+  #btn-compose { font-size: 0; width: 40px; min-height: 40px; padding: 0; display: inline-grid; place-items: center; }
+  #btn-compose[hidden] { display: none; }
+  #btn-compose::before { content: '✏️'; font-size: 1.05rem; }
+  .sidebar { top: var(--bar-h, 104px); }
+  /* one column at a time, picked with the Columns button */
+  html, body { overflow-x: hidden; }
+  .col-picker { display: block; order: 11; flex: 1 0 100%; text-align: left; font-weight: 600; min-height: 42px; }
+  .col-picker[hidden] { display: none; }
+  .board { gap: 0; padding: .75rem; overflow-x: hidden; }
+  .column, body.cols-sized .column { flex: 1 1 100% !important; width: 100%; max-width: none; }
+  .column:not(.phone-shown), .add-column { display: none !important; }
+  .col-resize, .reader-resize, .reader-widen { display: none !important; }
+  .reader { width: 100% !important; padding: .75rem; }
+  .reader-head { margin: -.75rem -.75rem 0; padding: .75rem; }
+  .reader-top { top: -.75rem; margin: -.75rem -.75rem 0; padding: 0 .75rem .5rem; }
+  .reader-top .reader-head { margin: 0 -.75rem; }
+  .reader-head .esc-hint { display: none; }
+  .reader-head .reader-close svg { width: 26px; height: 26px; }
+  .actions { gap: .35rem; }
+}
+
+/* Columns picker: phones only */
+.col-picker { display: none; }
+@media (max-width: 640px) { .col-picker:not([hidden]) { display: block; } }
+
+/* first open: which of your labels should be columns */
+dialog.pick-labels { max-width: 520px; width: calc(100% - 32px); border-radius: 14px; padding: 20px 22px; }
+dialog.pick-labels h2 { margin: 0 0 8px; font-size: 20px; }
+.pick-list { outline: none; max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin: 12px 0 6px; }
+dialog.pick-labels .pick-row { display: flex; flex-direction: row; justify-content: flex-start; text-align: left; align-items: center; gap: 12px; padding: 8px 6px; border-radius: 8px; cursor: pointer; font-size: 16px; }
+.pick-row:hover { background: rgba(127,127,127,.12); }
+dialog.pick-labels .pick-row input { width: 20px; height: 20px; margin: 0; flex: 0 0 auto; }
+.pick-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
+.pick-buttons button { padding: 10px 18px; font-size: 16px; }
+
+/* yes/no for things that can't be undone */
+dialog.ask { max-width: 460px; width: calc(100% - 32px); border-radius: 14px; padding: 20px 22px; }
+dialog.ask p { margin: 0 0 10px; font-size: 17px; line-height: 1.45; }
+dialog.ask p.hint { font-size: 15px; opacity: .8; }
+.ask-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.ask-buttons button { padding: 10px 18px; font-size: 16px; }
+button.danger { background: #c0392b; border-color: #c0392b; color: #fff; }
+button.danger:disabled { opacity: .45; cursor: default; }
+.column .delete-all { flex: none; min-height: 40px; margin: 0 .5rem .5rem; font-weight: 600;
+  background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); color: inherit; }
+.column .delete-all:hover { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
+
+/* Report issue */
+.report-btn { font-weight: 600; }
+.install-btn { font-weight: 600; margin-left: .5rem; white-space: nowrap; background: rgba(120, 180, 90, .22) !important; border-color: rgba(140, 200, 100, .55) !important; }
+#btn-undo:disabled { opacity: .45; cursor: default; }
+dialog.report { max-width: 560px; width: calc(100% - 32px); border-radius: 14px; padding: 20px 22px; }
+dialog.report h2 { margin: 0 0 14px; font-size: 20px; }
+.big-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.big-choice { padding: 22px 12px; font-size: 18px; font-weight: 600; border-radius: 12px; }
+dialog.report textarea { width: 100%; font: inherit; font-size: 16px; padding: 10px; border-radius: 8px; resize: vertical; }
+dialog.report details { margin-top: 10px; font-size: 14px; }
+dialog.report .report-shot { margin-top: 10px; }
+dialog.report .report-shot-buttons { display: flex; flex-wrap: wrap; gap: 14px; }
+dialog.report .report-shot img { display: block; max-width: 100%; max-height: 220px; margin-bottom: 8px; border: 1px solid var(--border, #555); border-radius: 8px; }
+dialog.report .report-shot p { margin: 0 0 8px; }
+dialog.report pre { white-space: pre-wrap; font-size: 12px; max-height: 180px; overflow: auto; padding: 8px; border-radius: 8px;
+  background: rgba(127,127,127,.12); }
+
+/* each message in an open email shows its subject */
+.message summary .msg-subject { font-weight: 700; font-size: 1.02em; margin: 2px 0 1px; }
+/* Unsubscribe, right under the subject (advertising / update emails only) */
+.unsub { display: inline-flex; gap: .45rem; align-items: center; margin: 0 0 0 .6rem; }
+/* 30% smaller, with a slight red tint (Paul, 2026-11-03) */
+.unsub .unsub-btn { font-weight: 600; font-size: .7rem; min-height: 25px; padding: 0 .63rem; border-radius: 6px;
+  background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); color: inherit; }
+.unsub .unsub-btn:hover:not(:disabled) { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
+.unsub .hint { margin: 0; font-size: .63rem; }
+
+/* Tasks: StediTask inside StediMail (2026-11-08). The checklist button switches the board to tasks. */
+.bar #btn-tasks { margin-right: 10px; width: 76px; }   /* apart from the gear; twice as wide (Paul, 2026-11-09) */
+.bar #btn-tasks[aria-pressed="true"] { background: #9fbf5a; border-color: #9fbf5a; color: #1b1d21; }
+body:not(.tasks-on) #tasks, body:not(.tasks-on) #tasks-note { display: none !important; }
+body.tasks-on #board, body.tasks-on #sidebar, body.tasks-on #bulk,
+body.tasks-on #search-form, body.tasks-on #btn-refresh, body.tasks-on #col-picker, body.tasks-on #btn-menu { display: none !important; }
+.tasks-note { gap: 1rem; }
+/* Add a task: the ✓ box in every mail column's title bar, the green + on StediTask's To do (Paul, 2026-11-08) */
+/* The sort icon in the same box as the ✓ (Paul, 2026-11-08) */
+.column h2 .icon-btn.boxed { width: 29px; height: 29px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  border-radius: 8px; border: 1px solid currentColor; background: transparent; opacity: .75; }
+.column h2 .icon-btn.boxed svg { width: 19px; height: 19px; }
+.column h2 .icon-btn.boxed:not(:has(svg)) { font-size: 1.23rem; line-height: 1; }   /* the ✕ */
+.column h2 .icon-btn.boxed:hover { opacity: 1; background: rgba(255,255,255,.12); }
+.column h2 .icon-btn.boxed.on { opacity: 1; }
+.column h2 .add-task-btn { flex: none; width: 29px; height: 29px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  border-radius: 8px; border: 1px solid currentColor; background: transparent; color: var(--bar-text); opacity: .75; }
+.column h2 .add-task-btn:hover { opacity: 1; background: rgba(255,255,255,.12); }
+.column h2 .add-task-btn svg { width: 17px; height: 17px; }   /* header buttons 15% smaller (Paul, 2026-11-08) */
+.column h2 .add-task-btn.plus { border: 1px solid rgba(60, 190, 95, .45); background: rgba(60, 190, 95, .16); color: var(--bar-text); opacity: 1; }   /* the red Downloads style, in green (Paul, 2026-11-08) */
+.column h2 .add-task-btn.plus:hover { background: rgba(60, 190, 95, .28); border-color: rgba(60, 190, 95, .7); }
+/* Tasks shown in the mail columns: light red cards */
+/* Tasks in the mail columns: the normal card with a heavy outline (thicker than a selected card's), big TASK,
+   bell and title, and the people after "CoLab:" (Paul, 2026-11-08) */
+/* Task cards, in the mail columns and StediTask (Paul, 2026-11-08): heavy outline, 10% darker; the name big on top,
+   the description below at normal weight, people after "CoLab:" one per line, Delete on the last line. */
+.card.task-card { font-size: .9em;   /* all its text 10% smaller (Paul, 2026-11-08) */
+  border: 2px solid var(--text); background: color-mix(in srgb, var(--panel) 76%, #000); padding: .55rem .85rem; min-height: 0; flex: none; }   /* 10% darker, then 15% darker again (Paul, 2026-11-08) */
+.card.task-card .top { display: flex; gap: .6rem; align-items: center; }
+.card.task-card .task-head { flex: 1; font-size: 1.31rem; font-weight: normal; line-height: 1.15; overflow-wrap: break-word; min-width: 0; }
+.task-bell { display: inline-flex; color: var(--muted); vertical-align: -.15em; margin-left: .3rem; }
+.task-bell svg { width: 1.05em; height: 1.05em; }
+.card.task-card .task-bell { font-size: 1.6rem; margin-left: 0; flex: none; }
+.card.task-card .task-when { display: block; margin-top: .15rem; color: var(--muted); }
+.card.task-card .task-when.late { color: #d9534f; font-weight: 700; }
+.card.task-card .task-desc { margin-top: .25rem; font-size: .775rem; line-height: 1.25; font-weight: normal; white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }   /* two lines, then … (Paul, 2026-11-08) */
+.card.task-card .colab { font-weight: 700; color: var(--text); }
+.card.task-card:not(.collapsed) { padding-right: 2.9rem; }   /* room for the corner */
+.card.task-card .task-corner { position: absolute; top: .55rem; right: .55rem;   /* level with the ✓ (the card's top padding), same gap to the right edge */ display: flex; flex-direction: column; align-items: center; gap: .25rem; }
+.card.task-card .task-bell.task-bell-side { position: absolute; right: .45rem; top: 50%; transform: translateY(-50%); font-size: 1.9rem; margin: 0; }
+.card.task-card .task-people { margin-top: .3rem; }
+.card.task-card .task-delete { flex: none; width: 29px; height: 29px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  font-size: 1.23rem; line-height: 1; border-radius: 8px; color: var(--text);
+  background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); }   /* square red ✕, like the red Downloads button */
+/* Every boxed ✕ the same drawn icon, the same size, centred */
+.column h2 .icon-btn.boxed .x-icon, .card.task-card .task-delete .x-icon, .task-tab.has-x .tab-x .x-icon { width: 17px; height: 17px; display: block; }
+.card.task-card .task-delete:hover { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
+.card.task-card .task-people { display: flex; align-items: flex-start; font-weight: normal; font-size: .765rem; }
+.card.task-card .task-proj { font-size: .72rem; }
+.card.task-card .colab-list { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.card.task-card .task-finish { position: static; transform: none; flex: none; }
+/* The ✓ held just left of the red ✕, level with it (Paul, 2026-11-08) */
+.card.task-card:not(.collapsed) .task-finish.task-finish-fixed { position: absolute; top: .55rem; right: calc(.55rem + 29px + 12px); }
+.card.task-card .top.has-finish { padding-right: calc(29px + 12px); }
+.card.task-card.collapsed .task-delete { flex: none; }
+/* The ✓ the same size and kind of tint as the red ✕, in green (Paul, 2026-11-08) */
+.card.task-card .task-finish, .card.task-card.collapsed .task-finish { width: 29px; height: 29px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  border-radius: 8px; font-size: 1.1rem; line-height: 1; color: var(--text);
+  background: rgba(60, 190, 95, .16); border: 1px solid rgba(60, 190, 95, .45); }
+.card.task-card .task-finish:hover:not(:disabled) { background: rgba(60, 190, 95, .28); border-color: rgba(60, 190, 95, .7); color: var(--text); }
+.card.task-card.finished .task-head { text-decoration: line-through; }
+.card.task.task-card { padding-right: 2.9rem; min-height: 0; }
+.card.task.task-card.collapsed { padding-right: .85rem; }   /* no old 52px minimum: a folded card is even top and bottom */ 
+/* A folded task: one line, same dark background and outline as an open one (Paul, 2026-11-08) */
+.card.task-card.collapsed { padding-top: .3rem; padding-bottom: .3rem; }
+.card.task-card.collapsed .top { gap: .5rem; min-height: 30px; }   /* as tall as StediTask's ✓, so both folded cards match */
+.card.task-card.collapsed .task-head { font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card.task-card.collapsed .task-bell { font-size: 1.05rem; }
+.card.task-card.collapsed .task-when { margin: 0; flex: none; font-size: .77rem; }
+/* folded card: name first and never squeezed out; the date wraps under it when short of room (Paul, 2026-11-09) */
+.card.task-card.collapsed .task-line { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: .5rem; row-gap: .1rem; }
+.card.task-card.collapsed .task-line .task-head { flex: 1 0 auto; max-width: 100%; }
+.card.task-card.collapsed .task-finish { width: 30px; min-height: 30px; height: 30px; font-size: 1rem; }   /* the ✓ is in the top row now, not over the right edge */
+.task-people { font-size: .85rem; color: var(--muted); margin-top: .2rem; }
+dialog.task-edit h2 { margin: 0 0 .8rem; font-size: 1.2rem; }
+/* The Outline: a small microphone in its corner, its links clickable under it (Paul, 2026-11-08) */
+dialog.task-edit .outline-wrap { position: relative; }
+dialog.task-edit .outline-wrap textarea { padding-right: 3.2rem; min-height: 5.2rem; }
+/* Round, like the big microphone in a reply (Paul, 2026-11-08) */
+.dictate-small { position: absolute; right: 8px; bottom: 8px; width: 36px; height: 36px; min-height: 0; padding: 0; display: grid; place-items: center;
+  border-radius: 50%; background: transparent; border: 2px solid var(--muted); color: var(--text); }
+.dictate-small svg { width: 21px; height: 21px; fill: currentColor; }
+.dictate-small:hover { background: var(--col); border-color: var(--text); }
+.dictate-small.listening, .dictate-small.listening:hover { background: #d93025; border-color: #d93025; color: #fff; }
+.outline-links { display: flex; flex-wrap: wrap; gap: .3rem .9rem; font-weight: normal; font-size: .9rem; }
+.outline-links:empty { display: none; }
+a.live-link { color: var(--accent); text-decoration: underline; overflow-wrap: anywhere; cursor: pointer; }
+dialog.task-edit select { min-height: 40px; font: inherit; padding: 0 .6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+dialog.task-edit .error:empty { display: none; }
+/* StediTask: Board / Timeline where Compose and Download are in the mail (Paul, 2026-11-08) */
+.task-views { display: none; gap: 12px; }   /* a little more room between Board and Timeline (Paul, 2026-11-09) */
+body.tasks-on .bar .task-views { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; }   /* Board as wide as Timeline */
+body.tasks-on #btn-compose, body.tasks-on #btn-downloads { display: none !important; }
+/* Search tasks sits where Search mail does, same size (Paul, 2026-11-09) */
+.task-search-box { display: none; }
+body.tasks-on .task-search-box { display: block; }
+#task-search { width: 100%; }
+#task-search::placeholder { color: var(--bar-muted); }
+.task-views button { border-radius: 999px; padding: 0 1rem; min-height: 38px; font-weight: 600; }
+.task-views button[aria-pressed="true"] { background: var(--bar-text, #fff); color: var(--bar-bg, #1b1d21); border-color: var(--bar-text, #fff); }
+.task-tab.all { --tab: var(--text); }
+.task-tab.all[aria-pressed="true"] { color: var(--bg); }
+.task-tab.all[aria-pressed="true"] .count { color: var(--bg); }
+.task-proj { font-size: .8rem; font-weight: 700; color: var(--tab); margin-bottom: .15rem; }
+/* Timeline */
+.tasks-board .gantt { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.gantt .grow { display: grid; grid-template-columns: 225px max-content; min-height: 38px; border-bottom: 1px solid var(--border); }
+.gantt .glabel { position: sticky; left: 0; z-index: 2; background: var(--panel); padding: 8px 12px; border-right: 1px solid var(--border);
+  display: flex; align-items: center; font-size: .95rem; min-width: 0; }
+.gantt .gname { all: unset; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gantt .gname:hover { text-decoration: underline; }
+.gantt .ghead .glabel, .gantt .gproj .glabel { font-weight: 700; }
+/* header row: black, "Task" centred over the names column (Paul, 2026-11-09) */
+.gantt .ghead, .gantt .ghead .glabel { background: #000; color: #fff; }
+.gantt .ghead .glabel { justify-content: center; }
+/* outlined, a bit taller, dates twice the size (Paul, 2026-11-09) */
+.gantt .ghead { min-height: 56px; box-shadow: inset 0 2px 0 #8a8f98, inset 0 -2px 0 #8a8f98, inset -2px 0 0 #8a8f98; }
+.gantt .ghead .glabel { box-shadow: inset 0 2px 0 #8a8f98, inset 0 -2px 0 #8a8f98, inset 2px 0 0 #8a8f98; }
+.gantt .ghead .gweek { top: 50%; transform: translateY(-50%); font-size: 1.25rem; color: #fff; }
+.gantt .gproj, .gantt .gproj .glabel { background: color-mix(in srgb, var(--pc) 12%, var(--panel)); }
+.gantt .gproj .glabel { color: var(--pc); }
+/* every other task row a lighter gray, so a name is easy to follow across to its bar (Paul, 2026-11-09) */
+.gantt .grow.galt, .gantt .grow.galt .glabel { background: color-mix(in srgb, #fff 6%, var(--panel)); }
+.gantt .gtrack { position: relative; }
+.gantt .gday { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--border); }
+.gantt .gweek { position: absolute; top: 10px; font-size: .8rem; color: var(--muted); white-space: nowrap; padding-left: 4px; }
+.gantt .gtoday { position: absolute; top: 0; bottom: 0; border-left: 2px solid #3fbf7f; z-index: 1; }
+.gantt .gbar { position: absolute; top: 7px; height: 24px; min-height: 0; border-radius: 6px; background: var(--pc); border: 0; padding: 0; cursor: pointer; }
+.gantt .gbar.done { opacity: .35; }
+.gantt .gbar.late { box-shadow: 0 0 0 2px #d9534f; }
+.gantt .gbar.nodue { background: repeating-linear-gradient(45deg, var(--pc), var(--pc) 6px, transparent 6px, transparent 11px); border: 2px solid var(--pc); }
+/* Undo is a square icon button in StediMail and StediTask; in StediTask a red Redo button appears beside it
+   after an undo (Paul, 2026-11-08) */
+.bar #btn-undo, .bar #btn-redo { width: 38px; height: 38px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  line-height: 1; border-radius: 8px; flex: 0 0 auto; }
+.bar #btn-undo[hidden], .bar #btn-redo[hidden] { display: none; }
+.bar #btn-redo { margin-left: 10px; background: #c62828; border-color: #c62828; color: #fff; }
+.bar #btn-redo:hover { background: #e53935; border-color: #e53935; }
+/* In StediTask the button shows an envelope: click it to go back to StediMail (Paul, 2026-11-08) */
+body:not(.tasks-on) #btn-tasks .back-mail, body.tasks-on #btn-tasks .to-tasks { display: none; }
+/* With the tasks on, the bar says StediTask (Paul, 2026-11-08) */
+body:not(.tasks-on) .bar h1 .task-logo, body.tasks-on .bar h1 .mail-logo { display: none; }
+/* Project buttons on top, like the StediTask window; the chosen project's columns below */
+.tasks-board { flex-direction: column; gap: .9rem; }
+.task-tabs { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; flex: none; }
+.task-tab { --tab: #808a96; display: inline-flex; align-items: center; gap: .6rem; min-height: 46px; padding: 0 1.1rem;
+  border: 2px solid var(--tab); border-radius: 10px; background: transparent; color: var(--tab); font-weight: 700; font-size: 1.05rem; }
+.task-tab .count { font-size: .8rem; padding: .05rem .5rem; border-radius: 999px; background: rgba(127,127,127,.25); color: var(--text); }
+.task-tab[aria-pressed="true"] { background: var(--tab); color: #fff; }
+.task-tab[aria-pressed="true"] .count { background: rgba(255,255,255,.3); color: #fff; }
+.task-tab:hover:not(:disabled) { filter: brightness(1.15); }
+/* The chosen project's ✕ inside its button (Paul, 2026-11-08) */
+.task-tab.has-x { padding-right: .45rem; }
+.task-tab.has-x .tab-main { all: unset; display: inline-flex; align-items: center; gap: .6rem; cursor: pointer; align-self: stretch; }
+.task-tab.has-x .tab-x { flex: none; width: 29px; height: 29px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  border-radius: 8px; border: 1px solid currentColor; background: transparent; color: inherit; font-size: 1rem; line-height: 1; opacity: .8; }
+.task-tab.has-x .tab-x:hover { opacity: 1; background: rgba(255,255,255,.15); }
+.task-tab.add-project { --tab: var(--muted); border-style: dashed; font-weight: 600; margin-left: .8rem; }
+.task-tab-input { min-height: 46px; min-width: 240px; margin-left: .8rem; }
+.task-cols { flex: 1; min-height: 0; display: flex; gap: 1rem; overflow-x: auto; }
+.task-empty { padding: 1rem 0; }
+.task-col h2 input { font: inherit; min-width: 0; flex: 1; }
+.task-col .cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; padding: 6px .6rem .4rem; }
+.card.task { padding-right: 3.6rem; min-height: 52px; }
+.card.task.finished { opacity: .6; }
+.card.task.finished .task-title { text-decoration: line-through; }
+.task-title { font-weight: 600; overflow-wrap: anywhere; }
+.task-due { font-size: .85rem; color: var(--muted); margin-top: .2rem; }
+.task-due.late { color: #d9534f; font-weight: 600; }
+.task-notes { font-size: .85rem; color: var(--muted); margin-top: .25rem; white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.task-finish { position: absolute; right: .5rem; top: 50%; transform: translateY(-50%); width: 40px; min-height: 40px; padding: 0;
+  border-radius: 50%; font-size: 1.2rem; font-weight: 700; color: #4f8a2b; border-color: #9fbf5a; background: transparent; }
+.task-finish:hover:not(:disabled) { background: #9fbf5a; color: #1b1d21; border-color: #9fbf5a; }
+.task-col .add-task, .task-col .task-new { margin: .3rem .6rem .6rem; width: calc(100% - 1.2rem); }
+/* Add task: the translucent green of the complete ✓ box (Paul, 2026-11-09) */
+.task-col .add-task { color: var(--text); background: rgba(60, 190, 95, .16); border: 1px solid rgba(60, 190, 95, .45); }
+.task-col .add-task:hover:not(:disabled) { background: rgba(60, 190, 95, .28); border-color: rgba(60, 190, 95, .7); }
+.add-task { text-align: left; color: var(--muted); background: transparent; border-style: dashed; }
+.add-task:hover:not(:disabled) { color: var(--text); }
+.add-task-col { flex: 0 0 220px; }
+.add-task-col .add-task, .add-task-col input { width: 100%; }
+dialog.task-edit { max-width: 520px; }
+dialog.task-edit label, dialog.task-edit .field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .8rem; font-weight: 600; }
+dialog.task-edit textarea { resize: vertical; }
+dialog.task-edit .color-row { display: flex; gap: .6rem; }
+dialog.task-edit .color-row input { flex: 1; }
+dialog.task-edit .spacer { flex: 1; }
+.task-col h2 { min-height: max(44px, calc(2lh + .2rem)); }
+/* Phones: one task column per screen, swipe sideways for the next */
+@media (max-width: 640px) {
+  .task-cols { gap: .75rem; overflow-x: auto; scroll-snap-type: x mandatory; }
+  .tasks-board .column:not(.phone-shown) { display: flex !important; }
+  .task-cols .column, .task-cols .add-task-col { flex: 0 0 calc(100% - 1.5rem) !important; scroll-snap-align: center; }
+  .task-tabs { flex-wrap: nowrap; overflow-x: auto; }
+  .task-tab { flex: none; }
+}
+/* bigger words in the Task column: names 1.2rem, "Task" title the size of the dates (Paul, 2026-11-09) */
+.gantt .glabel { font-size: 1.35rem; }
+.gantt .ghead .glabel { font-size: 2rem; }
