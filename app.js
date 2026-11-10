@@ -5029,6 +5029,7 @@ function renderTimeline(projects, list) {
   const rows = [el('div', { class: 'grow ghead' }, [el('div', { class: 'glabel' }, 'Task'),
     el('div', { class: 'gtrack', style: `width:${width}px` }, [...grid(), ...weeks.map((i) => el('div', { class: 'gweek', style: `left:${i * W}px` },
       new Date(addDays(start, i)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })))])])];
+  let rowN = 0;   // alternate across the whole list, first row grey (Paul, 2026-11-09)
   for (const p of projects) {
     const tasksIn = items.filter((t) => t.project === p.name).sort((a, b) => startOf(a).localeCompare(startOf(b)));
     if (!tasksIn.length) continue;
@@ -5041,7 +5042,7 @@ function renderTimeline(projects, list) {
       const bar = el('button', { type: 'button', class: 'gbar' + (done ? ' done' : '') + (late ? ' late' : '') + (t.due ? '' : ' nodue'),
         style: `left:${a}px;width:${Math.max(b - a, W)}px`, title: label, 'aria-label': label });
       for (const n of [name, bar]) n.addEventListener('click', () => editTask(t.id));
-      rows.push(el('div', { class: 'grow' + (i % 2 ? ' galt' : ''), style: `--pc:${pc}` }, [el('div', { class: 'glabel' }, name), track([bar])]));
+      rows.push(el('div', { class: 'grow' + (rowN++ % 2 ? '' : ' galt'), style: `--pc:${pc}` }, [el('div', { class: 'glabel' }, name), track([bar])]));
     }
   }
   if (rows.length === 1) rows.push(el('p', { class: 'hint task-empty' }, 'No tasks here yet.'));
