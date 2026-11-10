@@ -4929,7 +4929,10 @@ function animateTaskBoard(box, before) {
   }
 }
 
-function renderTasks() {
+function renderTasks(force = false) {
+  // Not while a task is being dragged: a redraw (the regular mail and task check) took the gap and the drop away
+  // (Paul, 2026-11-09). It redraws when the drag ends.
+  if (!force && taskDrag.live) { tasks.redrawLater = true; return; }
   const box = $('#tasks');
   const animKey = store.get('taskView', 'board') + '|' + store.get('taskProject', '');
   const before = box.querySelector('.task-cols') ? taskBoardSnapshot(box, animKey) : null;
@@ -5382,7 +5385,16 @@ async function removeTaskColumn(project, col) {
   taskToast(`Removed column “${col}”`);
 }
 
+// A task drag is over: the board may redraw again, and does if something changed meanwhile.
+function taskDragDone() {
+  if (!taskDrag.live) return;
+  taskDrag.live = false;
+  state.dragging = false;
+  if (tasks.redrawLater) { tasks.redrawLater = false; if (tasks.open) renderTasks(); }
+}
+
 function moveTask(id, col, nextTo, before) {
+  taskDragDone();
   if (id === nextTo) return;
   const items = tasksData().items;
   const t = findTask(id);
@@ -5411,6 +5423,8 @@ function renderTask(t, finished, tagColor = null) {
     e.dataTransfer.setData(TASK_DRAG, t.id);
     e.dataTransfer.effectAllowed = 'move';
     card.classList.add('dragging');
+    taskDrag.live = true;
+    state.dragging = true;   // the mail check waits too
     dragGhost.start(e, 'check');   // a see-through checkmark follows the pointer, like the envelope for an email (Paul, 2026-11-09)
     if (!card.closest('.task-col')) return;   // the gap on every task board, All projects too (Paul, 2026-11-09)
     taskDrag.id = t.id; taskDrag.card = card;
@@ -5418,7 +5432,7 @@ function renderTask(t, finished, tagColor = null) {
     // after the browser has taken its picture of the card: fold it away, leaving the gap in its place
     setTimeout(() => { if (taskDrag.card === card) { card.before(taskDrag.ph); card.style.display = 'none'; } });
   });
-  card.addEventListener('dragend', () => { card.classList.remove('dragging'); endTaskDrag(); });
+  card.addEventListener('dragend', () => { card.classList.remove('dragging'); endTaskDrag(); taskDragDone(); });
   return card;
 }
 
