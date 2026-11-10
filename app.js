@@ -5027,8 +5027,8 @@ function renderTimeline(projects, list) {
   const grid = () => weeks.map((i) => el('div', { class: 'gday', style: `left:${i * W}px` }));
   const track = (kids) => el('div', { class: 'gtrack', style: `width:${width}px` }, [...grid(), el('div', { class: 'gtoday', style: `left:${x(todayIso)}px`, title: 'Today' }), ...kids]);
   const rows = [el('div', { class: 'grow ghead' }, [el('div', { class: 'glabel' }, 'Task'),
-    el('div', { class: 'gtrack', style: `width:${width}px` }, weeks.map((i) => el('div', { class: 'gweek', style: `left:${i * W}px` },
-      new Date(addDays(start, i)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))))])];
+    el('div', { class: 'gtrack', style: `width:${width}px` }, [...grid(), ...weeks.map((i) => el('div', { class: 'gweek', style: `left:${i * W}px` },
+      new Date(addDays(start, i)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })))])])];
   for (const p of projects) {
     const tasksIn = items.filter((t) => t.project === p.name).sort((a, b) => startOf(a).localeCompare(startOf(b)));
     if (!tasksIn.length) continue;
