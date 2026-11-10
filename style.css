@@ -762,6 +762,10 @@ body.tasks-on .task-search-box { display: block; }
 /* header row: black, "Task" centred over the names column (Paul, 2026-11-09) */
 .gantt .ghead, .gantt .ghead .glabel { background: #000; color: #fff; }
 .gantt .ghead .glabel { justify-content: center; }
+/* outlined, a bit taller, dates twice the size (Paul, 2026-11-09) */
+.gantt .ghead { min-height: 50px; box-shadow: inset 0 2px 0 #8a8f98, inset 0 -2px 0 #8a8f98, inset -2px 0 0 #8a8f98; }
+.gantt .ghead .glabel { box-shadow: inset 0 2px 0 #8a8f98, inset 0 -2px 0 #8a8f98, inset 2px 0 0 #8a8f98; }
+.gantt .ghead .gweek { top: 50%; transform: translateY(-50%); font-size: 1.6rem; color: #fff; }
 .gantt .gproj, .gantt .gproj .glabel { background: color-mix(in srgb, var(--pc) 12%, var(--panel)); }
 .gantt .gproj .glabel { color: var(--pc); }
 /* every other task row a lighter gray, so a name is easy to follow across to its bar (Paul, 2026-11-09) */
