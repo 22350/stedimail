@@ -753,12 +753,15 @@ body.tasks-on .task-search-box { display: block; }
 .task-proj { font-size: .8rem; font-weight: 700; color: var(--tab); margin-bottom: .15rem; }
 /* Timeline */
 .tasks-board .gantt { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
-.gantt .grow { display: grid; grid-template-columns: 280px max-content; min-height: 38px; border-bottom: 1px solid var(--border); }
+.gantt .grow { display: grid; grid-template-columns: 196px max-content; min-height: 38px; border-bottom: 1px solid var(--border); }
 .gantt .glabel { position: sticky; left: 0; z-index: 2; background: var(--panel); padding: 8px 12px; border-right: 1px solid var(--border);
   display: flex; align-items: center; font-size: .95rem; min-width: 0; }
 .gantt .gname { all: unset; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gantt .gname:hover { text-decoration: underline; }
 .gantt .ghead .glabel, .gantt .gproj .glabel { font-weight: 700; }
+/* header row: black, "Task" centred over the names column (Paul, 2026-11-09) */
+.gantt .ghead, .gantt .ghead .glabel { background: #000; color: #fff; }
+.gantt .ghead .glabel { justify-content: center; }
 .gantt .gproj, .gantt .gproj .glabel { background: color-mix(in srgb, var(--pc) 12%, var(--panel)); }
 .gantt .gproj .glabel { color: var(--pc); }
 /* every other task row a lighter gray, so a name is easy to follow across to its bar (Paul, 2026-11-09) */
