@@ -5036,7 +5036,7 @@ function renderTimeline(projects, list) {
   const startOf = (t) => t.start || (t.added ? iso(t.added) : '') || t.due || todayIso;
   const endOf = (t) => (t.due && t.due >= startOf(t) ? t.due : startOf(t));
   const names = projects.map((p) => p.name);
-  const items = tasksData().items.filter((t) => names.includes(t.project) && taskMatches(t));
+  const items = tasksData().items.filter((t) => names.includes(t.project) && taskMatches(t) && !isFinishedTask(t));   // no finished tasks (Paul, 2026-11-09)
   const first = Math.min(addDays(today, -7), ...items.map((t) => at(startOf(t))));
   const start = addDays(first, -((new Date(first).getDay() + 6) % 7));   // a Monday
   const last = Math.max(addDays(today, 56), ...items.map((t) => at(endOf(t))));
