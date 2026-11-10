@@ -750,6 +750,9 @@ body.tasks-on .task-search-box { display: block; }
 .task-tab.all { --tab: var(--text); }
 .task-tab.all[aria-pressed="true"] { color: var(--bg); }
 .task-tab.all[aria-pressed="true"] .count { color: var(--bg); }
+/* very light grey, lighter than the other greys, white stroke (Paul, 2026-11-09) */
+.task-tab.all, .task-tab.all[aria-pressed="true"] { background: #f2f3f5; border-color: #fff; color: #1b1d21; }
+.task-tab.all .count, .task-tab.all[aria-pressed="true"] .count { background: rgba(0,0,0,.1); color: #1b1d21; }
 .task-proj { font-size: .8rem; font-weight: 700; color: var(--tab); margin-bottom: .15rem; }
 /* Timeline */
 .tasks-board .gantt { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
