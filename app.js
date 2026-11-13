@@ -536,12 +536,10 @@ function columnOf(t, cols) {
   return t.labels.has('INBOX') ? 0 : -1;
 }
 
-const byText = (f) => (a, b) => f(a).localeCompare(f(b), undefined, { sensitivity: 'base' }) || b.date - a.date;
 const SORTS = [
   { key: 'newest', label: 'Newest first', cmp: (a, b) => sortTime(b) - sortTime(a) },
   { key: 'oldest', label: 'Oldest first', cmp: (a, b) => sortTime(a) - sortTime(b) },
   { key: 'unread', label: 'Unread first', cmp: (a, b) => b.unread - a.unread || sortTime(b) - sortTime(a) },
-  { key: 'sender', label: 'Sender A–Z', cmp: byText((t) => t.people) },
   { key: 'custom', label: 'Custom dates…', cmp: (a, b) => sortTime(b) - sortTime(a) },
 ];
 // Per-column sort, by column name, kept in this browser.
@@ -558,8 +556,8 @@ function setSort(col, key) {
 
 // Which emails a column loads. Gmail only lists newest first, so a column shows its newest 100, except:
 // Oldest first walks the whole list (ids only, 500 a page, cheap) and loads the oldest 100; Unread first
-// loads unread ones first and fills up with the newest. Sender A–Z sorts the loaded ones:
-// Gmail can't list by those, and loading every email to sort them would take many minutes.
+// loads unread ones first and fills up with the newest; Custom dates asks Gmail for that range. No A–Z
+// sorts (Paul, 2026-11-12): Gmail can't list by sender or subject, so they'd only sort the loaded emails.
 async function listColumn(col) {
   const max = col.archive ? 30 : 100;
   const label = col.inbox ? 'INBOX' : state.labelIds[col.name];
