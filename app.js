@@ -549,6 +549,7 @@ const sortOf = (col) => SORTS.find((s) => s.key === columnSorts[col.name]) || SO
 function setSort(col, key) {
   if (key === 'newest') delete columnSorts[col.name]; else columnSorts[col.name] = key;
   store.set('sorts', columnSorts);
+  delete columnLimits[col.name];                       // a new sort starts again from its first block
   assign(columns());
   render();
   loadBoard();             // and fetch the right emails for it: oldest first starts at the oldest in Gmail (Paul, 2026-11-12)
@@ -558,10 +559,24 @@ function setSort(col, key) {
 // Oldest first walks the whole list (ids only, 500 a page, cheap) and loads the oldest 100; Unread first
 // loads unread ones first and fills up with the newest; Custom dates asks Gmail for that range. No A–Z
 // sorts (Paul, 2026-11-12): Gmail can't list by sender or subject, so they'd only sort the loaded emails.
+// Scrolling to the bottom of a column loads its next block (Paul, 2026-11-12): each column remembers how many
+// it shows for this visit, and the regular refresh keeps that many.
+const columnBlock = (col) => (col.archive ? 30 : 100);
+const columnLimits = {};
+const columnLimit = (col) => columnLimits[col.name] || columnBlock(col);
 async function listColumn(col) {
-  const max = col.archive ? 30 : 100;
+  const max = columnLimit(col);
   const label = col.inbox ? 'INBOX' : state.labelIds[col.name];
-  const list = (extra = {}) => api('/threads?' + new URLSearchParams({ maxResults: String(max), labelIds: label, ...extra }));
+  const list = async (extra = {}) => {                 // up to max, a page of at most 500 at a time
+    const threads = [];
+    let page = '';
+    do {
+      const r = await api('/threads?' + new URLSearchParams({ maxResults: String(Math.min(500, max - threads.length)), labelIds: label, ...extra, ...(page ? { pageToken: page } : {}) }));
+      threads.push(...(r.threads || []));
+      page = r.nextPageToken || '';
+    } while (page && threads.length < max);
+    return { threads, nextPageToken: page || undefined };
+  };
   const key = sortOf(col).key;
   const range = key === 'custom' && rangeOf(col);
   if (range) {
@@ -3026,6 +3041,17 @@ function renderColumn(col, i) {
     head,
     el('div', { class: 'cards' }, withMailTasks(col, ids, ids.map((id) => renderCard(state.threads.get(id), i)), sort)),
   ]);
+  const cardsBox = node.querySelector('.cards');
+  if (state.more[i]) cardsBox.append(el('div', { class: 'more-hint' }, state.loadingMore === col.name ? 'Loading more…' : 'Scroll for more'));
+  cardsBox.addEventListener('scroll', () => {
+    if (!state.more[i] || state.loading || state.loadingMore) return;
+    if (cardsBox.scrollTop + cardsBox.clientHeight < cardsBox.scrollHeight - 300) return;
+    columnLimits[col.name] = columnLimit(col) + columnBlock(col);
+    state.loadingMore = col.name;
+    const hint = cardsBox.querySelector('.more-hint');
+    if (hint) hint.textContent = 'Loading more…';
+    loadBoard().finally(() => { state.loadingMore = null; render(); });
+  }, { passive: true });
   node.append(...resizeHandles(node));
   head.title = 'Double-click to minimize or restore this column';
   onDoubleClick(head, () => { if (!matchMedia('(max-width: 640px)').matches) toggleCollapsed(col, node); });
