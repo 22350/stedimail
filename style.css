@@ -949,3 +949,7 @@ dialog.date-range h2 { margin: 0 0 12px; font-size: 20px; }
 .range-row input { font: inherit; font-size: 17px; padding: 8px 10px; border-radius: 8px; }
 .range-chip { flex: 0 0 auto; padding: 2px 10px; font-size: 13px; border-radius: 999px; white-space: nowrap; }
 .more-hint { text-align: center; padding: 14px 0 18px; font-size: 14px; opacity: .7; }
+/* Move to folder: the rule offer */
+dialog.folder-rule h2 { margin: 0 0 10px; font-size: 20px; }
+dialog.folder-rule input { width: 100%; box-sizing: border-box; font: inherit; font-size: 17px; padding: 10px; border-radius: 8px; margin: 4px 0 6px; }
+#menu { max-height: 70vh; overflow-y: auto; }

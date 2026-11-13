@@ -2443,6 +2443,8 @@ const ICONS = {
   allmail: 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l8 5 8-5v10zm-8-7L4 6h16l-8 5z',
   bag: 'M18 6h-2c0-2.21-1.79-4-4-4S8 3.79 8 6H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6-2c1.1 0 2 .9 2 2h-4c0-1.1.9-2 2-2zm6 16H6V8h2v2c0 .55.45 1 1 1s1-.45 1-1V8h4v2c0 .55.45 1 1 1s1-.45 1-1V8h2v12z',
   offer: 'M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM13 20.01L4 11V4h7v-.01l9 9-7 7.02zM6.5 5C5.67 5 5 5.67 5 6.5S5.67 8 6.5 8 8 7.33 8 6.5 7.33 5 6.5 5z',
+  starOn: 'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',
+  folder: 'M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z',
   star: 'M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z',
   important: 'M15 19H3l4.5-7L3 5h12c.65 0 1.26.31 1.63.84L21 12l-4.37 6.16c-.37.52-.98.84-1.63.84zm-8.5-2H15l3.5-5L15 7H6.5l3.5 5-3.5 5z',
   label: 'M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16zM16 17H5V7h11l3.55 5L16 17z',
@@ -3606,6 +3608,102 @@ function renderMessage(m, expanded) {
   return details;
 }
 
+// Star, and Move to folder, in an open email (Paul, 2026-11-12). A folder is one of the person's own Gmail
+// labels (not a board column); moving there adds the label and takes it out of the Inbox, like Gmail's
+// "Move to". Then StediMail offers a rule, so future emails with that subject go there by themselves.
+async function toggleStar(id) {
+  const t = state.threads.get(id);
+  const on = !t?.labels.has('STARRED');
+  try {
+    await api(`/threads/${id}/modify`, { method: 'POST', body: on ? { addLabelIds: ['STARRED'] } : { removeLabelIds: ['STARRED'] } });
+    if (t) { if (on) t.labels.add('STARRED'); else t.labels.delete('STARRED'); }
+    refreshReaderActions(id);
+    render();
+    toast(on ? 'Starred' : 'Star removed');
+  } catch (e) { if (!(e instanceof AuthError)) toast('Could not change the star: ' + e.message); }
+}
+
+const folderLabels = () => state.userLabels.filter((l) => !l.name.startsWith(LABEL_PREFIX));
+
+function openFolderMenu(anchor, id) {
+  openMenu(anchor, [
+    { heading: 'Move to folder' },
+    ...folderLabels().map((l) => ({ label: l.name, run: () => moveToFolder(id, l) })),
+    { sep: true },
+    { label: 'New folder…', run: async () => {
+      const name = prompt('New folder name')?.trim().replace(/^\/+|\/+$/g, '');
+      if (!name) return;
+      try {
+        const l = await api('/labels', { method: 'POST', body: { name, labelListVisibility: 'labelShow', messageListVisibility: 'show' } });
+        storeUserLabel(l);
+        moveToFolder(id, l);
+      } catch (e) { if (!(e instanceof AuthError)) toast('Could not make the folder: ' + e.message); }
+    } },
+  ]);
+}
+
+async function moveToFolder(id, l) {
+  const t = state.threads.get(id);
+  const subject = t?.subject || '';
+  try {
+    await api(`/threads/${id}/modify`, { method: 'POST', body: { addLabelIds: [l.id], removeLabelIds: ['INBOX'] } });
+    if (t) { t.labels.add(l.id); t.labels.delete('INBOX'); }
+    assign(columns());
+    render();
+    refreshReaderActions(id);
+    toast(`Moved to “${l.name}”`, { label: 'Undo', run: async () => {
+      await api(`/threads/${id}/modify`, { method: 'POST', body: { addLabelIds: ['INBOX'], removeLabelIds: [l.id] } });
+      if (t) { t.labels.delete(l.id); t.labels.add('INBOX'); }
+      assign(columns()); render(); refreshReaderActions(id);
+    } });
+    if (subject) offerFolderRule(subject, l);
+  } catch (e) { if (!(e instanceof AuthError)) toast('Could not move it: ' + e.message); }
+}
+
+// Gmail filters need Gmail's settings permission, asked for the first time a rule is made.
+const FILTER_SCOPE = 'https://www.googleapis.com/auth/gmail.settings.basic';
+const filterAuth = { token: null, exp: 0, pending: null };
+async function filtersApi(path, method = 'GET', body) {
+  const token = await scopedSignIn(filterAuth, FILTER_SCOPE);
+  const res = await fetch(API + '/settings/filters' + path, { method,
+    headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined });
+  if (!res.ok) { let msg = res.statusText; try { msg = (await res.json()).error.message; } catch {} throw new Error(msg); }
+  return res.status === 204 ? null : res.json();
+}
+
+function offerFolderRule(subject, l) {
+  const words = subject.replace(/^\s*((re|fwd?|fw)\s*:\s*)+/i, '').trim();
+  const input = el('input', { value: words, 'aria-label': 'Subject words for the rule' });
+  const err = el('p', { class: 'hint' });
+  const dlg = el('dialog', { class: 'ask folder-rule', 'aria-label': 'Make a rule?' });
+  const no = el('button', { type: 'button' }, 'No thanks');
+  const yes = el('button', { type: 'button', class: 'primary' }, 'Create rule');
+  dlg.append(el('h2', {}, 'Make a rule for this?'),
+    el('p', {}, `Future emails whose subject contains these words will go straight to “${l.name}” and skip the Inbox:`),
+    input, el('p', { class: 'hint' }, 'You can shorten it to the part that stays the same each time.'), err,
+    el('div', { class: 'ask-buttons' }, [no, yes]));
+  const shut = () => { dlg.close(); dlg.remove(); };
+  no.addEventListener('click', shut);
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); shut(); });
+  yes.addEventListener('click', async () => {
+    const q = input.value.trim();
+    if (!q) { err.textContent = 'Type the subject words, or click No thanks.'; return; }
+    yes.disabled = true; yes.textContent = 'Creating…';
+    try {
+      await filtersApi('', 'POST', { criteria: { subject: q }, action: { addLabelIds: [l.id], removeLabelIds: ['INBOX'] } });
+      shut();
+      toast(`Rule made: subjects with “${q}” go to “${l.name}”`);
+    } catch (e) {
+      yes.disabled = false; yes.textContent = 'Create rule';
+      err.textContent = 'Could not make the rule: ' + e.message;
+    }
+  });
+  document.body.append(dlg);
+  dlg.showModal();
+  no.focus();
+}
+
 function refreshReaderActions(id) {
   const box = $('#reader-actions');
   if (box && state.openId === id) renderActions(box, id);
@@ -3633,6 +3731,8 @@ function renderActions(box, id) {
     }),
     el('span', { class: 'row-break' }),     // the icons always start their own line
     colorBtn,
+    t?.labels.has('STARRED') ? iconButton('Starred: click to unstar', 'starOn', () => toggleStar(id)) : iconButton('Star', 'star', () => toggleStar(id)),
+    iconButton('Move to folder', 'folder', (b) => openFolderMenu(b, id)),
     iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, id)),
     iconButton('Archive', 'archive', () => archiveThread(id)),
     iconButton('Report spam', 'spam', () => spamThread(id)),
