@@ -6817,7 +6817,9 @@ const CLEANUP_MEDICAL_BILL_DAYS = 30;
 const cleanupMedical = (name, addr) => CLEANUP_MEDICAL.test(`${name} ${addr}`) || CLEANUP_HEALTH_DOMAIN.test(addr);
 // Senders where only the newest few matter: those stay, and the rest can go even if marked Important
 // or from this week (Paul, 2026-11-13: "in reddit we only need to keep the last five notifications").
-const CLEANUP_KEEP_NEWEST = [[/@(.+\.)?redditmail\.com$/i, 5]];
+// Paul, 2026-11-13: American Express, only the newest 4 (this month's and last month's statement and reminder).
+// For these senders subject words stop counting too, except tax forms, anything to sign, fraud and disputes.
+const CLEANUP_KEEP_NEWEST = [[/@(.+\.)?redditmail\.com$/i, 5], [/@(.+\.)?americanexpress\.com$/i, 4]];
 const cleanupKeepNewest = (addr) => CLEANUP_KEEP_NEWEST.find(([re]) => re.test(addr))?.[1] || 0;
 // Senders whose emails carry a due date: the scan reads these emails' text, and one whose due date passed
 // more than 30 days ago can go even if its subject sounds important (Paul, 2026-11-13: Paychex).
@@ -6947,6 +6949,12 @@ function cleanupKeep(t, now, contacts, newestOnly = false, silent = false) {
   const bulk = t.unsub || cleanupNoReply(t.addr) || alerts;
   const newsletter = t.unsub && !alerts;
   if (t.labels.has('STARRED')) return 'starred';                      // just this email, not the whole sender (Paul, 2026-11-13)
+  if (newestOnly) {                                                     // past a keep-the-newest sender's newest few
+    if ([...t.labels].some((l) => l.startsWith('Label_'))) return 'has a label';
+    if (t.attachments) return 'has an attachment';                     // could be a statement PDF
+    if (CLEANUP_KEEP_FOREVER.test(t.subject) || /fraud|dispute/i.test(t.subject)) return 'tax, signing or fraud';
+    return null;
+  }
   if (CLEANUP_DUE_SENDERS.test(t.addr)) {                              // Paychex
     if ([...t.labels].some((l) => l.startsWith('Label_'))) return 'has a label';
     if (t.attachments) return 'has an attachment';
