@@ -1028,7 +1028,7 @@ async function runBulk(action, arg) {
     const k = fullySelectedColumn();
     return k !== undefined && !(k < 0 ? state.search?.more : state.more[k]) ? k : undefined;
   })();
-  if (action === 'trash' && !all && !await askConfirm(`Move ${state.selected.size === 1 ? 'this conversation' : state.selected.size.toLocaleString() + ' conversations'} to Trash?`, 'Move to Trash')) return;
+  if (action === 'trash' && !all && !await askConfirm(`Move ${state.selected.size === 1 ? 'this conversation' : state.selected.size.toLocaleString() + ' conversations'} to Trash?`, 'Move to Trash', { near: { x: pointer.x, y: pointer.y } })) return;
   try {
     const change = await bulkChange(action, arg);
     let count;
@@ -1595,7 +1595,8 @@ function openReport() {
 // or repeated Enter/Space (a shaky key press, a voice-typing key) says yes before it's read. Here Cancel
 // has the focus, the OK button only works after ARM_MS, and Esc or a click outside cancels.
 const ARM_MS = 900;
-function askConfirm(message, okLabel = 'OK', { cancelLabel = 'Cancel', danger = true } = {}) {
+// near: { x, y } puts the box just below that point (the pointer) instead of the middle of the screen.
+function askConfirm(message, okLabel = 'OK', { cancelLabel = 'Cancel', danger = true, near = null } = {}) {
   return new Promise((resolve) => {
     const dlg = el('dialog', { class: 'ask', 'aria-label': 'Please confirm' });
     const cancel = el('button', { type: 'button' }, cancelLabel);
@@ -1610,6 +1611,12 @@ function askConfirm(message, okLabel = 'OK', { cancelLabel = 'Cancel', danger = 
     dlg.addEventListener('click', (e) => { if (e.target === dlg) finish(false); });   // the backdrop
     document.body.append(dlg);
     dlg.showModal();
+    if (near && near.x >= 0) {                        // the pointer has been seen
+      const r = dlg.getBoundingClientRect();
+      dlg.classList.add('near');
+      dlg.style.left = Math.max(8, Math.min(near.x - r.width / 2, innerWidth - r.width - 8)) + 'px';
+      dlg.style.top = Math.max(8, Math.min(near.y + 16, innerHeight - r.height - 8)) + 'px';
+    }
     cancel.focus();
     setTimeout(() => ok.removeAttribute('disabled'), ARM_MS);
   });
@@ -2033,7 +2040,7 @@ function forSelection(id, action, one) {
 async function confirmTrash(id) {
   const t = state.threads.get(id);
   if (t?.labels.has('TRASH')) return trashThread(id);   // delete forever asks its own question
-  if (await askConfirm(`Move “${t?.subject || 'this email'}” to Trash?`, 'Move to Trash')) trashThread(id);
+  if (await askConfirm(`Move “${t?.subject || 'this email'}” to Trash?`, 'Move to Trash', { near: { x: pointer.x, y: pointer.y } })) trashThread(id);   // just below the pointer (Paul, 2026-11-12)
 }
 
 async function trashThread(id, said = 'Moved to Trash') {
