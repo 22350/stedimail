@@ -6868,11 +6868,16 @@ const CLEANUP_HEALTH_DOMAIN = /@(.+\.)?(hioscar|oscarhealth|anthem|aetna|cigna|u
 // and the Tick all buttons skip it: it's only ever ticked on purpose (Paul, 2026-11-12: an old insurer is
 // fair to clear out). The address counts too: "mercuryinsurance.com", "hioscar.com".
 const CLEANUP_SENDER_WORDS = new RegExp(CLEANUP_SENSITIVE.source + '|health|insur|medicaid', 'i');
+// A medical-sounding sender whose every email has an unsubscribe link is a marketing list (Hone Health, a
+// hospital's newsletter), not a medical office: patient mail doesn't carry one (Paul, 2026-11-13).
+const CLEANUP_MEDICAL_WORD = /health|medical|clinic|hospital|doctor|pharmacy|prescription|lab result|appointment/i;
 function cleanupWarn(g) {
+  const list = g.all.length > 0 && g.all.every((t) => t.unsub);
   if (CLEANUP_HEALTH_DOMAIN.test(g.addr)) return 'Looks like a health insurer.';
-  if (cleanupMedical(g.name, g.addr)) return 'Looks like a medical office.';
+  if (cleanupMedical(g.name, g.addr) && !list) return 'Looks like a medical office.';
   if (CLEANUP_SENSITIVE_DOMAIN.test(g.addr.split('@')[1] || '')) return 'A government address.';
   const m = `${g.name} ${g.addr}`.match(CLEANUP_SENDER_WORDS);
+  if (m && list && CLEANUP_MEDICAL_WORD.test(m[0])) return null;
   return m ? `The sender mentions \u201c${m[0].toLowerCase()}\u201d.` : null;
 }
 const CLEANUP_SENSITIVE_DOMAIN = /\.(gov|mil)$|(^|\.)(irs|ssa|courts?|uscourts)\./i;
