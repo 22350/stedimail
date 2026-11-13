@@ -6772,17 +6772,25 @@ function watchForUpdates() {
 // confirms. Rules only, no AI (Paul, 2026-11-12: the person reviews each card, so they are the check).
 // Each sender group goes through these steps, and each step can only make it safer:
 //  1. group the Inbox by sender address
-//  2. hard no: replied to, a contact or someone written to, starred, on the board, nested, snoozed
-//     → the whole sender is left alone
-//  3. kept emails: Important, newer than 7 days, other labels, attachments, or legal/money/medical/travel/
-//     security words in the subject → those emails stay; the rest of the group carries on
-//  4. junk score from unsubscribe header, Gmail category, never opened, volume, age
-//  5. a sender whose name or address sounds sensitive gets a ⚠ warning, and Trash all skips it
+//  2. hard no: replied to, a contact or someone written to (except a no-reply address), on the board,
+//     nested, snoozed → the whole sender is left alone
+//  3. kept emails: starred, Important (bulk mail: only the last 2 weeks), other labels, attachments,
+//     legal/money/medical/travel/security words in the subject, government mail that isn't a
+//     subscription, a no-reply contact's last 2 weeks → those emails stay; the rest of the group carries on
+//  4. junk score from unsubscribe header, Gmail category, never opened, volume, age; the last week's
+//     emails don't count toward it, but go with the sender if it's chosen
+//  5. a sender whose name or address sounds sensitive, or is a government address, gets a ⚠ warning,
+//     and Trash all skips it
 //  6. the user picks Trash, Unsubscribe (also trashes) or Spam per sender, and confirms
+// Made more thorough 2026-11-13 (Paul): his scan of 25,503 emails found 5 senders, mostly because Gmail
+// marks lots of bulk mail Important and one starred email kept a whole sender out.
 // Moved mail gets a hidden label per run, so "Restore all" brings back exactly that run, even later.
 const CLEANUP_PREFIX = 'Mailboard/Cleanup/';
 const CLEANUP_RECENT_DAYS = 7;
+const CLEANUP_KEEP_DAYS = 14;          // bulk mail marked Important, and a no-reply contact's mail: kept this long
 const CLEANUP_OLD_DAYS = 90;
+const CLEANUP_NOREPLY = /no[-_.]?reply|do[-_.]?not[-_.]?reply/i;
+const cleanupNoReply = (addr) => CLEANUP_NOREPLY.test(addr.split('@')[0] || '');
 const CLEANUP_MIN_SCORE = 4;
 const CLEANUP_PACE_MS = 40;           // 25 emails a second = 7,500 of Gmail's 15,000 units a minute
 const CLEANUP_SENSITIVE = new RegExp([
@@ -6802,6 +6810,7 @@ const CLEANUP_HEALTH_DOMAIN = /@(.+\.)?(hioscar|oscarhealth|anthem|aetna|cigna|u
 const CLEANUP_SENDER_WORDS = new RegExp(CLEANUP_SENSITIVE.source + '|health|insur|medicaid', 'i');
 function cleanupWarn(g) {
   if (CLEANUP_HEALTH_DOMAIN.test(g.addr)) return 'Looks like a health insurer.';
+  if (CLEANUP_SENSITIVE_DOMAIN.test(g.addr.split('@')[1] || '')) return 'A government address.';
   const m = `${g.name} ${g.addr}`.match(CLEANUP_SENDER_WORDS);
   return m ? `The sender mentions \u201c${m[0].toLowerCase()}\u201d.` : null;
 }
@@ -6854,8 +6863,8 @@ function cleanupThread(t) {
 function cleanupVeto(t, contacts) {
   const boardIds = new Set(Object.values(state.labelIds || {}));
   if (t.fromMe) return 'you replied';
-  if (contacts.has(t.addr)) return 'in your contacts or you’ve emailed them';
-  if (t.labels.has('STARRED')) return 'starred';
+  // Gmail saves no-reply addresses as contacts too; those senders go on, keeping their last 2 weeks (step 3).
+  if (contacts.has(t.addr) && !cleanupNoReply(t.addr)) return 'in your contacts or you’ve emailed them';
   for (const l of t.labels) {
     if (boardIds.has(l)) return 'on your board';
     if (l === state.nestFlagId || state.nestParents?.has(l)) return 'nested';
@@ -6864,15 +6873,20 @@ function cleanupVeto(t, contacts) {
   return null;
 }
 
-// Why one email stays out of the group (step 3), or null.
-function cleanupKeep(t, now) {
-  if (now - t.date < CLEANUP_RECENT_DAYS * 864e5) return 'newer than a week';
-  // Gmail marks lots of promos Important by itself, so it keeps out just that email, not the whole sender (Paul, 2026-11-12).
-  if (t.labels.has('IMPORTANT')) return 'marked Important';
+// Why one email stays out of the group (step 3), or null. Emails from the last week that pass this
+// don't count toward the junk score but go with the sender if it's chosen (Paul, 2026-11-13).
+function cleanupKeep(t, now, contacts) {
+  const age = now - t.date;
+  const bulk = t.unsub || cleanupNoReply(t.addr);
+  if (t.labels.has('STARRED')) return 'starred';                      // just this email, not the whole sender (Paul, 2026-11-13)
+  // Gmail marks lots of bulk mail Important by itself: for bulk mail only the last 2 weeks stay (Paul, 2026-11-13).
+  if (t.labels.has('IMPORTANT') && (!bulk || age < CLEANUP_KEEP_DAYS * 864e5)) return 'marked Important';
   if ([...t.labels].some((l) => l.startsWith('Label_'))) return 'has a label';
   if (t.attachments) return 'has an attachment';
   if (CLEANUP_SENSITIVE.test(t.subject)) return 'looks important';     // the sender's name and address give a warning instead
-  if (CLEANUP_SENSITIVE_DOMAIN.test(t.addr.split('@')[1] || '')) return 'government sender';
+  // Official government mail stays; their subscription mail (it has an unsubscribe link) doesn't (Paul, 2026-11-13).
+  if (CLEANUP_SENSITIVE_DOMAIN.test(t.addr.split('@')[1] || '') && !t.unsub) return 'government sender';
+  if (contacts.has(t.addr) && age < CLEANUP_KEEP_DAYS * 864e5) return 'no-reply contact, last 2 weeks';
   return null;
 }
 
@@ -6951,9 +6965,15 @@ async function cleanupRunScan(note, progress) {
     if (veto) { skip(veto, g); continue; }
     g.kept = [];
     g.threads = [];
+    g.recent = [];
     const keepWhy = {};
-    for (const t of g.all) { const k = cleanupKeep(t, now); if (k) keepWhy[k] = (keepWhy[k] || 0) + 1; (k ? g.kept : g.threads).push(t); }
+    for (const t of g.all) {
+      const k = cleanupKeep(t, now, contacts);
+      if (k) { keepWhy[k] = (keepWhy[k] || 0) + 1; g.kept.push(t); }
+      else (now - t.date < CLEANUP_RECENT_DAYS * 864e5 ? g.recent : g.threads).push(t);
+    }
     if (!g.threads.length) {
+      if (g.recent.length) keepWhy['newer than a week'] = g.recent.length;
       skipped['only recent or important-looking emails'] = (skipped['only recent or important-looking emails'] || 0) + 1;
       leftAlone.push({ name: g.name, addr: g.addr, n: g.all.length, why: 'every email kept out: ' + Object.entries(keepWhy).sort((a, b) => b[1] - a[1]).map(([w, n]) => `${n} ${w}`).join(', ') });
       continue;
@@ -6963,6 +6983,7 @@ async function cleanupRunScan(note, progress) {
     g.score = score;
     g.warn = cleanupWarn(g);
     g.why = why;
+    g.threads = [...g.threads, ...g.recent].sort((a, b) => b.date - a.date);   // this week's go too if chosen
     groups.push(g);
   }
 
@@ -7148,10 +7169,11 @@ function openCleanup() {
     body.replaceChildren(
       el('p', {}, 'StediMail looks through your Inbox for senders whose emails look like bulk mail: ads, newsletters, alerts. '
         + 'It shows them as a list. Nothing is chosen, and nothing happens until you choose Trash, Unsubscribe or Spam and confirm.'),
-      el('p', { class: 'hint' }, 'Never suggested: anyone you’ve replied to or emailed, your contacts, starred, '
-        + 'board, nested or snoozed mail. Emails marked Important, from the last week, with attachments, other labels, or about money, legal, '
-        + 'medical, travel or account security are kept out. Chosen emails go to Trash, where Gmail keeps them 30 days, and '
-        + 'each clean-up can be restored in one click.'),
+      el('p', { class: 'hint' }, 'Never suggested: anyone you’ve replied to or emailed, your contacts, '
+        + 'board, nested or snoozed mail. Kept out: starred emails, emails with attachments or other labels, emails about money, legal, '
+        + 'medical, travel or account security, and official government mail. Emails marked Important are kept out too, '
+        + 'except newsletters and alerts older than 2 weeks. Choosing a sender also takes their emails from this week. '
+        + 'Chosen emails go to Trash, where Gmail keeps them 30 days, and each clean-up can be restored in one click.'),
       trashBox,
       ...(store.get('cleanupFreed', 0) ? [el('p', { class: 'cleanup-freed' }, `Clean-ups so far have cleared about ${bytesLabel(store.get('cleanupFreed', 0))} of junk from your Google storage (once Trash is emptied).`)] : []),
       ...(runs.length ? [el('h3', {}, 'Earlier clean-ups'), el('div', { class: 'cleanup-runs' }, runs.map((r) => {
@@ -7245,6 +7267,7 @@ function openCleanup() {
         el('div', { class: 'cleanup-who' }, [
           el('div', {}, [el('b', {}, g.name), ' ', el('span', { class: 'hint' }, g.addr)]),
           el('div', { class: 'cleanup-count' }, `${g.threads.length.toLocaleString()} email${g.threads.length === 1 ? '' : 's'}`
+            + (g.recent.length ? `, ${g.recent.length} from this week` : '')
             + (g.kept.length ? ` (${g.kept.length} kept out)` : '') + ` · since ${dateLabel(oldest)}`),
           el('div', { class: 'cleanup-why' }, (g.why.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.')),
           ...(g.warn ? [el('div', { class: 'cleanup-warn' }, `⚠ ${g.warn} Could be important: check before choosing.`)] : []),
