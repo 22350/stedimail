@@ -958,3 +958,4 @@ dialog.sig-dialog { max-width: 560px; }
 dialog.sig-dialog h2 { margin: 0 0 10px; font-size: 20px; }
 .sig-editor { min-height: 120px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 6px; }
 dialog.ask.near { position: fixed; margin: 0; }
+.cleanup-run button { white-space: nowrap; flex: 0 0 auto; }

@@ -7282,7 +7282,7 @@ function openCleanup() {
           const these = rows.filter((r) => r.isConnected && !r.warn && r.size <= 3);
           const n = these.reduce((k, r) => k + r.size, 0);
           if (!await askConfirm(`You\u2019re deciding to trash all senders with 3 or fewer emails without reviewing them.\n\n${these.length} senders, ${n.toLocaleString()} emails. Cards marked \u26a0 are left out. Nothing moves until you click Do it.\n\nTrashed emails stay in Gmail\u2019s Trash for 30 days, unless you empty it yourself, so you can still get them back until then.`, 'Confirm')) return;
-          rows.forEach((r) => { if (r.isConnected && !r.warn) r.setTrash(r.size <= 3); });
+          these.forEach((r) => r.setTrash(true));        // only adds: choices already made on bigger cards stay
         }),
         button('Clear all choices', '', () => { rows.forEach((r) => r.clear()); update(); }),
         ...(rows.some((r) => r.warn) ? [el('span', { class: 'hint' }, 'Cards marked ⚠ are never chosen by these buttons.')] : [])])] : []),
