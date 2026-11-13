@@ -6801,6 +6801,9 @@ const CLEANUP_ALERT_KEEP_DAYS = 60;
 // Newsletters (an unsubscribe link, not an alert sender): only the last month is current; older ones are
 // always suggested and start chosen for Trash (Paul, 2026-11-13: "if you see newsletter get rid of it").
 const CLEANUP_NEWSLETTER_DAYS = 30;
+// An email that says it is itself an ad, usually in its small print. Not "unsubscribe from promotional emails",
+// which bills say too.
+const CLEANUP_PROMO = /\bthis is an? [^.\n]{0,40}?(promotional|marketing|advertising) (message|e-?mail|communication)|\bthis (e-?mail|message) is an? (advertisement|promotion(al)? (message|e-?mail)|ad)\b/i;
 // Automated account-security notices (login alerts, codes, password changes) only matter for a while:
 // the last 30 days stay, older ones can go (Paul, 2026-11-13: Facebook's "Did you just log in…").
 const CLEANUP_SECURITY = /security code|verification code|confirmation code|login code|one-time|\b2fa\b|\blog ?in|\bsign[- ]?in|password|\bverify|new device|unusual|suspicious|was this you|is this you|\bcode\b/i;
@@ -6961,6 +6964,7 @@ function cleanupKeep(t, now, contacts, newestOnly = false, silent = false) {
     return null;
   }
   if (newsletter && age < CLEANUP_NEWSLETTER_DAYS * 864e5) return 'newsletter from the last month';
+  if (t.promo) return [...t.labels].some((l) => l.startsWith('Label_')) ? 'has a label' : null;   // says it's an ad
   // Gmail marks lots of bulk mail Important by itself: for bulk mail only the last 2 weeks stay (Paul, 2026-11-13).
   if (t.labels.has('IMPORTANT') && !newestOnly && (!bulk || (!alerts && age < CLEANUP_KEEP_DAYS * 864e5))) return 'marked Important';
   if ([...t.labels].some((l) => l.startsWith('Label_'))) return 'has a label';
@@ -7028,26 +7032,40 @@ async function cleanupRunScan(note, progress) {
     }
   });
 
+  // Some emails need their text read, not just the subject: a few at once, at half the usual pace.
+  const readBodies = async (list, label, use) => {
+    let read = 0;
+    await mapLimit(list, 4, async (t) => {
+      if (cleanup.stopped) return;
+      const wait = nextSlot - Date.now();
+      nextSlot = Math.max(nextSlot, Date.now()) + CLEANUP_PACE_MS * 2;    // a full email costs twice as much
+      if (wait > 0) await sleep(wait);
+      try {
+        const m = await cleanupApi(`/messages/${t.msgIds[0]}?format=full`, note);
+        const plain = findPart(m.payload, 'text/plain'), html = findPart(m.payload, 'text/html');
+        const body = plain ? decodePart(plain) : html ? decodeEntities(decodePart(html).replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ')) : '';
+        use(t, `${t.subject}\n${m.snippet || ''}\n${body}`.replace(/[ \t\u00a0]+/g, ' '));
+      } catch (e) { if (e instanceof AuthError) throw e; }
+      progress(`${label}… ${++read} of ${list.length}`, read / list.length);
+    });
+  };
+
   // Due-date senders: read each email's text for its due date (Paul, 2026-11-13).
-  const dueOnes = threads.filter((t) => CLEANUP_DUE_SENDERS.test(t.addr));
-  let read = 0;
-  await mapLimit(dueOnes, 4, async (t) => {
-    if (cleanup.stopped) return;
-    const wait = nextSlot - Date.now();
-    nextSlot = Math.max(nextSlot, Date.now()) + CLEANUP_PACE_MS * 2;      // a full email costs twice as much
-    if (wait > 0) await sleep(wait);
-    try {
-      const m = await cleanupApi(`/messages/${t.msgIds[0]}?format=full`, note);
-      const plain = findPart(m.payload, 'text/plain'), html = findPart(m.payload, 'text/html');
-      const body = plain ? decodePart(plain) : html ? decodeEntities(decodePart(html).replace(/<[^>]+>/g, ' ')) : '';
-      t.due = cleanupDueDate(`${t.subject}\n${m.snippet || ''}\n${body}`.replace(/[ \t ]+/g, ' '), t.date);
-    } catch (e) { if (e instanceof AuthError) throw e; }
-    progress(`Looking for due dates… ${++read} of ${dueOnes.length}`, read / dueOnes.length);
-  });
+  await readBodies(threads.filter((t) => CLEANUP_DUE_SENDERS.test(t.addr)), 'Looking for due dates',
+    (t, text) => { t.due = cleanupDueDate(text, t.date); });
 
   progress('Checking your contacts…');
   const contacts = new Set((await loadContacts()).map((c) => c.addr));
   const never = cleanupNever();
+
+  // Bulk emails held back only by their subject, a picture "attachment" or Gmail's Important mark: read them,
+  // and one that calls itself promotional or an advertisement loses that protection (Paul, 2026-11-13: AT&T
+  // says "This is an AT&T promotional message." at the bottom).
+  const vetoed = new Set(threads.filter((t) => never.has(t.addr) || cleanupVeto(t, contacts)).map((t) => t.addr));
+  const soft = /^(looks important|has an attachment|marked Important)/;
+  await readBodies(threads.filter((t) => t.unsub && !vetoed.has(t.addr) && soft.test(cleanupKeep(t, now, contacts) || '')),
+    'Checking which held-back emails are ads', (t, text) => { t.promo = CLEANUP_PROMO.test(text); });
+
   const bySender = new Map();
   for (const t of threads) {
     if (!t.addr) continue;
