@@ -1238,6 +1238,11 @@ function renderSidebar() {
     ...(state.navMore ? moreFolders.map(folderRow) : []),
     moreFolders.length ? navToggle(state.navMore, () => { state.navMore = !state.navMore; store.set('navMore', state.navMore); renderSidebar(); }) : null,
     el('div', { class: 'nav-item nav-demo' }, [el('a', { class: 'nav-main', href: '/videos/', target: '_blank' }, [icon('play'), el('span', { class: 'nav-name' }, 'Demo videos')])]),
+    (() => {
+      const b = el('button', { class: 'nav-main' }, [icon('trash'), el('span', { class: 'nav-name' }, 'Guided Inbox Cleanup')]);
+      b.addEventListener('click', openCleanup);
+      return el('div', { class: 'nav-item nav-demo nav-cleanup' }, [b]);
+    })(),
     el('div', { class: 'nav-head' }, [el('span', {}, 'Labels'), add]),
     ...shownLabels.map(labelRow),
     ...(state.labelsMore ? moreLabels.map(labelRow) : []),
@@ -1575,7 +1580,11 @@ function setSidebar(open) {
 // Emails put back into the Inbox (woken from snooze by Gmail or Mailboard, or moved back elsewhere) sort
 // by when they came back, like Gmail puts them at the top. Gmail's change history says which ones;
 // they're loaded even when they're older than the newest 100 the Inbox column normally shows.
+// More than this many coming back at once is a bulk move (a Trash recovery, a big "move to Inbox"), not
+// replies: bumping them all would mean loading every one, and blow through Gmail's per-minute limit.
+const BULK_RETURN = 100;
 state.bumps = Object.fromEntries(Object.entries(store.get('bumps', {})).filter(([, t]) => Date.now() - t < 14 * 864e5));
+if (Object.keys(state.bumps).length > BULK_RETURN) state.bumps = {};
 const sortTime = (t) => Math.max(t.date || 0, state.bumps[t.id] || 0);
 
 async function checkReturned() {
@@ -1598,7 +1607,7 @@ async function checkReturned() {
   }
   store.set('historyId', latest);
   const now = Date.now();
-  for (const id of back) state.bumps[id] = now;
+  if (back.size <= BULK_RETURN) for (const id of back) state.bumps[id] = now;
   store.set('bumps', state.bumps);
 }
 
@@ -2123,7 +2132,7 @@ function scopedSignIn(driveAuth, scope) {
       include_granted_scopes: false,
       callback: (resp) => {
         if (resp.error || !google.accounts.oauth2.hasGrantedAllScopes(resp, scope)) {
-          reject(new Error('Google Drive permission wasn\'t given'));
+          reject(new Error('Google permission wasn\'t given'));
           return;
         }
         driveAuth.token = resp.access_token;
@@ -2131,7 +2140,7 @@ function scopedSignIn(driveAuth, scope) {
         resolve(driveAuth.token);
       },
       error_callback: (err) => reject(new Error(err.type === 'popup_closed'
-        ? 'The Google window was closed' : 'Google Drive sign-in failed: ' + err.type)),
+        ? 'The Google window was closed' : 'Google sign-in failed: ' + err.type)),
     }).requestAccessToken({ login_hint: state.me });
   }).finally(() => { driveAuth.pending = null; });
   return driveAuth.pending;
@@ -4549,7 +4558,11 @@ const TASKS_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const TASKS_FILE = 'steditask.json';
 const TASKS_SAVE_MS = 800;
 const TASK_DRAG = 'application/x-steditask';
-const TASK_START_COLS = ['To do', 'Doing', 'Finished'];
+// A new project starts with To do only, and a "Set up workflow columns" button, so people build the steps they
+// want instead of deleting ours (Paul, 2026-11-12). Older task files are upgraded to the old three.
+const TASK_START_COLS = ['To do'];
+const TASK_OLD_COLS = ['To do', 'Doing', 'Finished'];
+const TASK_COL_IDEAS = ['Doing', 'Waiting', 'In review', 'Finished'];
 const tasksAuth = { token: null, exp: 0, pending: null };
 const tasks = {
   open: false,
@@ -4631,11 +4644,11 @@ function tasksData() {
 // Before 2026-11-08 each project was a single column (its name in t.col) with a done flag.
 function upgradeTasks(d) {
   if (!d.projects) {
-    d.projects = (d.columns || []).map((name) => ({ name, columns: [...TASK_START_COLS], own: true }));
+    d.projects = (d.columns || []).map((name) => ({ name, columns: [...TASK_OLD_COLS], own: true }));
     for (const t of d.items) {
       if (t.project) continue;
       t.project = t.col;
-      t.col = t.done ? TASK_START_COLS[2] : TASK_START_COLS[0];
+      t.col = t.done ? TASK_OLD_COLS[2] : TASK_OLD_COLS[0];
       delete t.done;
       delete t.doneAt;
     }
@@ -4835,10 +4848,10 @@ function projectColor(name, list = taskProjects()) {
   return TAB_COLORS[Math.max(i, 0) % TAB_COLORS.length];
 }
 
-// The last column is where finished tasks go.
+// The last column is where finished tasks go; with only To do, nothing is finished yet.
 function isFinishedTask(t) {
   const cols = taskProject(t.project).columns;
-  return t.col === cols[cols.length - 1];
+  return cols.length > 1 && t.col === cols[cols.length - 1];
 }
 
 // Search inside StediTask (Paul, 2026-11-08): the box in the top bar shows only the tasks whose name, outline,
@@ -4948,7 +4961,7 @@ function renderTasks(force = false) {
   if (view === 'timeline') body = renderTimeline(cur === ALL_PROJECTS ? list : list.filter((p) => p.name === cur), list);
   else if (cur === ALL_PROJECTS) body = el('div', { class: 'task-cols' }, renderAllColumns(list));
   else body = el('div', { class: 'task-cols' },
-    [...taskProject(cur).columns.map((c, i, all) => renderTaskColumn(cur, c, i === all.length - 1)), renderAddTaskColumn(cur)]);
+    [...taskProject(cur).columns.map((c, i, all) => renderTaskColumn(cur, c, all.length > 1 && i === all.length - 1)), renderAddTaskColumn(cur)]);
   box.replaceChildren(tabs, body);
   box.querySelectorAll('.cards').forEach((c, i) => { c.scrollTop = scrolls[i] || 0; });
   const gantt = box.querySelector('.gantt');
@@ -5348,7 +5361,63 @@ function renameColumnBox(project, col) {
   input.addEventListener('blur', () => finish(true));
 }
 
+// Pick the steps after To do: a few common ones, or your own, in order; the last is where finished tasks go.
+function setupTaskColumns(project) {
+  const dlg = el('dialog', { class: 'pick-labels', 'aria-label': 'Set up workflow columns' });
+  const list = el('div', { class: 'pick-list' });
+  const addRow = (name, on) => {
+    const cb = el('input', { type: 'checkbox', value: name, ...(on ? { checked: '' } : {}) });
+    const row = el('label', { class: 'pick-row' }, [cb, el('span', {}, name)]);
+    const finished = list.querySelector('input[value="Finished"]')?.closest('.pick-row');
+    if (finished) finished.before(row); else list.append(row);      // your own steps go before Finished
+    cb.addEventListener('change', show);
+  };
+  const order = el('p', { class: 'hint' });
+  const chosen = () => [...list.querySelectorAll('input:checked')].map((c) => c.value);
+  function show() {
+    const c = chosen();
+    order.textContent = c.length ? `Your columns: To do \u2192 ${c.join(' \u2192 ')}. Finished tasks go in \u201c${c[c.length - 1]}\u201d.`
+      : 'Tick the steps your tasks go through, or add your own.';
+  }
+  TASK_COL_IDEAS.forEach((n) => addRow(n, false));
+  const own = el('input', { placeholder: 'Your own column name', 'aria-label': 'Your own column name' });
+  const plus = el('button', { type: 'button' }, 'Add');
+  const addOwn = () => {
+    const name = own.value.trim();
+    if (!name) return;
+    if (name.toLowerCase() === 'to do' || [...list.querySelectorAll('input')].some((c) => c.value.toLowerCase() === name.toLowerCase())) { toast(`There\u2019s already a \u201c${name}\u201d column.`); return; }
+    addRow(name, true); own.value = ''; own.focus(); show();
+  };
+  plus.addEventListener('click', addOwn);
+  own.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addOwn(); } });
+  const save = el('button', { type: 'button', class: 'primary' }, 'Use these columns');
+  const cancel = el('button', { type: 'button' }, 'Cancel');
+  dlg.append(el('h2', {}, `Set up workflow columns for ${project}`),
+    el('p', {}, 'Tasks start in To do. Pick the steps that come after it, in order. The last one is where finished tasks go. You can add or remove columns later.'),
+    list, el('div', { class: 'pick-own' }, [own, plus]), order, el('div', { class: 'pick-buttons' }, [cancel, save]));
+  const shut = () => { dlg.close(); dlg.remove(); };
+  cancel.addEventListener('click', shut);
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); shut(); });
+  save.addEventListener('click', () => {
+    const c = chosen();
+    if (!c.length) { toast('Tick at least one column, or Cancel.'); return; }
+    const p = taskProject(project);
+    p.columns = [p.columns[0], ...c];
+    saveTasks(`Workflow columns for ${project}`);
+    shut();
+    renderTasks();
+  });
+  document.body.append(dlg);
+  show();
+  dlg.showModal();
+}
+
 function renderAddTaskColumn(project) {
+  if (taskProject(project).columns.length === 1) {
+    const setup = el('button', { type: 'button', class: 'add-task setup-cols' }, 'Set up workflow columns');
+    setup.addEventListener('click', () => setupTaskColumns(project));
+    return el('section', { class: 'add-task-col' }, [setup]);
+  }
   const add = el('button', { type: 'button', class: 'add-task' }, '+ Add column');
   const node = el('section', { class: 'add-task-col' }, [add]);
   add.addEventListener('click', () => {
@@ -6425,6 +6494,666 @@ function watchForUpdates() {
   setInterval(checkForUpdate, 5 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
   addEventListener('focus', checkForUpdate);
+}
+
+// ---------- Guided Inbox Cleanup ----------
+// Suggests senders whose Inbox mail looks like bulk junk; nothing is touched until the user ticks a
+// sender and confirms. Each sender group goes through these steps, and each step can only make it safer:
+//  1. group the Inbox by sender address
+//  2. hard no: replied to, a contact or someone written to, starred, Important, on the board, nested,
+//     snoozed → the whole sender is left alone
+//  3. kept emails: newer than 7 days, other labels, attachments, or legal/money/medical/travel/security
+//     words → those emails stay; the rest of the group carries on
+//  4. junk score from unsubscribe header, Gmail category, never opened, volume, age
+//  5. Chrome's built-in AI (when there is one) may only veto a group or keep emails out of it
+//  6. the user ticks groups (none ticked to start) and confirms
+// Chosen mail goes to Trash (never deleted) with a hidden label per run, so "Restore all" brings back
+// exactly that run, even later.
+const CLEANUP_PREFIX = 'Mailboard/Cleanup/';
+const CLEANUP_RECENT_DAYS = 7;
+const CLEANUP_OLD_DAYS = 90;
+const CLEANUP_MIN_SCORE = 4;
+const CLEANUP_PACE_MS = 40;           // 25 emails a second = 7,500 of Gmail's 15,000 units a minute
+const CLEANUP_SENSITIVE = new RegExp([
+  'invoice', 'receipt', 'statement', 'tax', '1099', 'w-2', 'irs\\b', 'refund', 'payment', 'paid', 'deposit', 'bank',
+  'court', 'legal', 'attorney', 'lawyer', 'lawsuit', '\\bv\\.', 'subpoena', 'notice of',
+  'medical', 'doctor', 'clinic', 'hospital', 'appointment', 'prescription', 'pharmacy', 'lab result', 'insurance', 'claim', 'medicare',
+  'security code', 'verification code', 'verify', 'password', 'sign-in', 'sign in', 'login', '2fa', 'one-time',
+  'booking', 'reservation', 'itinerary', 'ticket', 'flight', 'boarding', 'confirmation',
+  'order #', 'order number', 'your order', 'shipped', 'delivered',
+  'lease', 'contract', 'agreement', 'signature', 'docusign', 'government', 'dmv', 'social security',
+].join('|'), 'i');
+// Health insurers whose address doesn't say so.
+const CLEANUP_HEALTH_DOMAIN = /@(.+\.)?(hioscar|oscarhealth|anthem|aetna|cigna|uhc|kaiserpermanente|kp|bcbs[a-z]*|humana|centene|ambetter|molinahealthcare|healthnet)\.(com|org)$/i;
+// A sender whose name or address sounds like health, insurance, money or legal is still shown, with a warning,
+// and the Tick all buttons skip it: it's only ever ticked on purpose (Paul, 2026-11-12: an old insurer is
+// fair to clear out). The address counts too: "mercuryinsurance.com", "hioscar.com".
+const CLEANUP_SENDER_WORDS = new RegExp(CLEANUP_SENSITIVE.source + '|health|insur|medicaid', 'i');
+function cleanupWarn(g) {
+  if (CLEANUP_HEALTH_DOMAIN.test(g.addr)) return 'Looks like a health insurer.';
+  const m = `${g.name} ${g.addr}`.match(CLEANUP_SENDER_WORDS);
+  return m ? `The sender mentions \u201c${m[0].toLowerCase()}\u201d.` : null;
+}
+const CLEANUP_SENSITIVE_DOMAIN = /\.(gov|mil)$|(^|\.)(irs|ssa|courts?|uscourts)\./i;
+
+const cleanup = { scan: null, stopped: false };
+
+const cleanupNever = () => new Set(store.get('cleanupNever', []));
+const cleanupRuns = () => store.get('cleanupRuns', []);
+
+// One Gmail call for the scan. If Gmail says "slow down", wait a minute and carry on instead of failing.
+async function cleanupApi(path, note) {
+  for (let tries = 0; ; tries++) {
+    try { return await api(path); } catch (e) {
+      if (e instanceof AuthError || tries >= 3 || !/quota|rate limit|too many/i.test(e.message)) throw e;
+      note?.('Gmail asked StediMail to slow down. Waiting a minute, then carrying on…');
+      await sleep(60_000);
+    }
+  }
+}
+
+function cleanupThread(t) {
+  const msgs = t.messages || [];
+  const labels = new Set(msgs.flatMap((m) => m.labelIds || []));
+  const first = msgs.find((m) => (m.labelIds || []).includes('INBOX')) || msgs[0] || {};
+  const from = header(first, 'from');
+  const subject = header(msgs[0] || {}, 'subject') || '(no subject)';
+  const me = (state.me || '').toLowerCase();
+  return {
+    id: t.id,
+    msgIds: msgs.map((m) => m.id),
+    addr: addrOf(from),
+    name: displayName(from) || addrOf(from),
+    subject,
+    date: Math.max(0, ...msgs.map((m) => Number(m.internalDate || 0))),
+    labels,
+    unsub: msgs.some((m) => header(m, 'list-unsubscribe')),
+    unsubWay: (() => { for (const m of msgs) { const l = header(m, 'list-unsubscribe'); if (!l) continue;
+      const links = [...l.matchAll(/<([^>]+)>/g)].map((x) => x[1].trim());
+      const web = links.find((u) => /^https:\/\//i.test(u)), mail = links.find((u) => /^mailto:/i.test(u));
+      if (web || mail) return { web, mail, oneClick: !!web && /one-click/i.test(header(m, 'list-unsubscribe-post')) }; } return null; })(),
+    fromMe: msgs.some((m) => (m.labelIds || []).includes('SENT') || sameMailbox(addrOf(header(m, 'from')), me)),
+    attachments: msgs.some((m) => /multipart\/mixed/i.test(header(m, 'content-type'))),
+    size: msgs.reduce((n, m) => n + (m.sizeEstimate || 0), 0),
+    unread: msgs.every((m) => (m.labelIds || []).includes('UNREAD')),
+  };
+}
+
+// Why a whole sender is left alone (step 2), or null.
+function cleanupVeto(t, contacts) {
+  const boardIds = new Set(Object.values(state.labelIds || {}));
+  if (t.fromMe) return 'you replied';
+  if (contacts.has(t.addr)) return 'in your contacts or you’ve emailed them';
+  if (t.labels.has('STARRED')) return 'starred';
+  for (const l of t.labels) {
+    if (boardIds.has(l)) return 'on your board';
+    if (l === state.nestFlagId || state.nestParents?.has(l)) return 'nested';
+    if (l === state.snoozeFlagId || state.snoozeIds?.has(l)) return 'snoozed';
+  }
+  return null;
+}
+
+// Why one email stays out of the group (step 3), or null.
+function cleanupKeep(t, now) {
+  if (now - t.date < CLEANUP_RECENT_DAYS * 864e5) return 'newer than a week';
+  // Gmail marks lots of promos Important by itself, so it keeps out just that email, not the whole sender (Paul, 2026-11-12).
+  if (t.labels.has('IMPORTANT')) return 'marked Important';
+  if ([...t.labels].some((l) => l.startsWith('Label_'))) return 'has a label';
+  if (t.attachments) return 'has an attachment';
+  if (CLEANUP_SENSITIVE.test(t.subject)) return 'looks important';     // the sender's name and address give a warning instead
+  if (CLEANUP_SENSITIVE_DOMAIN.test(t.addr.split('@')[1] || '')) return 'government sender';
+  return null;
+}
+
+// Junk score (step 4) and the plain-words reasons behind it.
+function cleanupScore(list, now) {
+  const share = (f) => list.filter(f).length / list.length;
+  let score = 0;
+  const why = [];
+  if (share((t) => t.unsub) >= .5) { score += 2; why.push('has an unsubscribe link'); }
+  const promo = share((t) => t.labels.has('CATEGORY_PROMOTIONS') || t.labels.has('CATEGORY_SOCIAL'));
+  const upd = share((t) => t.labels.has('CATEGORY_UPDATES') || t.labels.has('CATEGORY_FORUMS'));
+  if (promo >= .5) { score += 2; why.push('Gmail files it as Promotions/Social'); }
+  else if (upd >= .5) { score += 1; why.push('Gmail files it as Updates'); }
+  const unread = share((t) => t.unread);
+  if (unread === 1) { score += 2; why.push(list.length > 1 ? 'you never opened any' : 'never opened'); }
+  else if (unread >= .8) { score += 1; why.push('you rarely open them'); }
+  if (list.length >= 5) score += 1;
+  if (list.length >= 20) { score += 1; why.push('lots of them'); }
+  if (share((t) => now - t.date > CLEANUP_OLD_DAYS * 864e5) >= .5) { score += 1; why.push('mostly older than 3 months'); }
+  return { score, why };
+}
+
+// Chrome's built-in on-device model (Gemini Nano). The browser downloads it once, a few GB, after a click.
+const CLEANUP_AI_OPTS = { expectedInputs: [{ type: 'text', languages: ['en'] }], expectedOutputs: [{ type: 'text', languages: ['en'] }] };
+const cleanupAiOn = () => store.get('cleanupAi', true);
+async function cleanupAiStatus() {
+  try { return self.LanguageModel ? await LanguageModel.availability(CLEANUP_AI_OPTS) : 'unavailable'; } catch { return 'unavailable'; }
+}
+
+// A session when the model is here and switched on, otherwise null (rules only).
+async function cleanupAi() {
+  if (!cleanupAiOn() || (await cleanupAiStatus()) !== 'available') return null;
+  try {
+    return await LanguageModel.create({ ...CLEANUP_AI_OPTS,
+      initialPrompts: [{ role: 'system', content: 'You help clear junk email. Be cautious: anything personal, '
+        + 'about money, health, legal matters, travel, accounts or security is NOT junk. When unsure, say not junk.' }],
+    });
+  } catch { return null; }
+}
+
+// Starts (or follows) the one-time download; onProgress gets 0..1.
+async function cleanupGetAi(onProgress) {
+  const s = await LanguageModel.create({ ...CLEANUP_AI_OPTS,
+    monitor(m) { m.addEventListener('downloadprogress', (e) => onProgress(e.loaded)); } });
+  s.destroy?.();
+}
+
+async function cleanupAskAi(session, g) {
+  const sample = g.threads.slice(0, 8);
+  const prompt = `Sender: ${g.name} <${g.addr}>, ${g.threads.length} emails. Subjects:\n`
+    + sample.map((t, i) => `${i + 1}. ${t.subject}`).join('\n')
+    + '\n\nIs this sender bulk junk the person can safely trash? List any subject numbers that look personal or important.';
+  const schema = { type: 'object', required: ['junk', 'keep', 'reason'], properties: {
+    junk: { type: 'boolean' }, keep: { type: 'array', items: { type: 'integer' } }, reason: { type: 'string' } } };
+  const out = JSON.parse(await session.prompt(prompt, { responseConstraint: schema }));
+  return { junk: !!out.junk, keep: (out.keep || []).map((n) => sample[n - 1]?.id).filter(Boolean), reason: String(out.reason || '').slice(0, 160) };
+}
+
+async function cleanupRunScan(note, progress) {
+  const now = Date.now();
+  const ids = [];
+  let page = '';
+  do {
+    const r = await cleanupApi(`/messages?labelIds=INBOX&maxResults=500${page ? '&pageToken=' + page : ''}`, note);
+    for (const m of r.messages || []) ids.push(m.id);
+    page = r.nextPageToken || '';
+    progress(`Listing your Inbox… ${ids.length.toLocaleString()}`);
+  } while (page && !cleanup.stopped);
+
+  // One email at a time (half the Gmail cost of a whole conversation), a few at once, at a steady pace.
+  const path = (id) => `/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`
+    + '&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Unsubscribe-Post&metadataHeaders=Content-Type';
+  const threads = [];
+  let done = 0, nextSlot = Date.now();
+  await mapLimit(ids, 4, async (id) => {
+    if (cleanup.stopped) return;
+    const wait = nextSlot - Date.now();
+    nextSlot = Math.max(nextSlot, Date.now()) + CLEANUP_PACE_MS;
+    if (wait > 0) await sleep(wait);
+    if (cleanup.stopped) return;
+    try {
+      const m = await cleanupApi(path(id), note);
+      threads.push(cleanupThread({ id: m.threadId, messages: [m] }));
+    } catch (e) { if (e instanceof AuthError) throw e; }
+    done++;
+    if (done % 20 === 0 || done === ids.length) {
+      const left = Math.ceil((ids.length - done) * CLEANUP_PACE_MS / 60000);
+      progress(`Reading ${done.toLocaleString()} of ${ids.length.toLocaleString()} emails… ${left > 1 ? `about ${left} minutes left` : 'almost done'}`, done / ids.length);
+    }
+  });
+
+  progress('Checking your contacts…');
+  const contacts = new Set((await loadContacts()).map((c) => c.addr));
+  const never = cleanupNever();
+  const bySender = new Map();
+  for (const t of threads) {
+    if (!t.addr) continue;
+    if (!bySender.has(t.addr)) bySender.set(t.addr, { addr: t.addr, name: t.name, all: [] });
+    bySender.get(t.addr).all.push(t);
+  }
+
+  const skipped = {};
+  const leftAlone = [];                                 // the senders, so the biggest can be shown with their reason
+  const skip = (why, g) => {
+    skipped[why] = (skipped[why] || 0) + 1;
+    if (g) leftAlone.push({ name: g.name, addr: g.addr, n: g.all.length, why });
+  };
+  const groups = [];
+  for (const g of bySender.values()) {
+    if (never.has(g.addr)) { skip('you said not trash before', g); continue; }
+    const veto = g.all.map((t) => cleanupVeto(t, contacts)).find(Boolean);
+    if (veto) { skip(veto, g); continue; }
+    g.kept = [];
+    g.threads = [];
+    const keepWhy = {};
+    for (const t of g.all) { const k = cleanupKeep(t, now); if (k) keepWhy[k] = (keepWhy[k] || 0) + 1; (k ? g.kept : g.threads).push(t); }
+    if (!g.threads.length) {
+      skipped['only recent or important-looking emails'] = (skipped['only recent or important-looking emails'] || 0) + 1;
+      leftAlone.push({ name: g.name, addr: g.addr, n: g.all.length, why: 'every email kept out: ' + Object.entries(keepWhy).sort((a, b) => b[1] - a[1]).map(([w, n]) => `${n} ${w}`).join(', ') });
+      continue;
+    }
+    const { score, why } = cleanupScore(g.threads, now);
+    if (score < CLEANUP_MIN_SCORE) { skip('doesn’t look like bulk mail', g); continue; }
+    g.score = score;
+    g.warn = cleanupWarn(g);
+    g.why = why;
+    groups.push(g);
+  }
+
+  // Have you ever written to them? Contacts can be off, so ask Gmail directly for the candidates.
+  let n = 0;
+  for (const g of [...groups]) {
+    if (cleanup.stopped) break;
+    progress(`Checking whether you’ve written to them… ${++n} of ${groups.length}`);
+    try {
+      const r = await cleanupApi(`/messages?maxResults=1&q=${encodeURIComponent(`in:sent to:${g.addr}`)}`, note);
+      if (r.messages?.length) { groups.splice(groups.indexOf(g), 1); skip('you’ve emailed them', g); }
+    } catch (e) { if (e instanceof AuthError) throw e; groups.splice(groups.indexOf(g), 1); skip('couldn’t check'); }
+  }
+
+  const ai = await cleanupAi();
+  if (ai) {
+    n = 0;
+    for (const g of [...groups]) {
+      if (cleanup.stopped) break;
+      progress(`On-device AI is reviewing… ${++n} of ${groups.length}`);
+      try {
+        const a = await cleanupAskAi(ai, g);
+        if (!a.junk) { groups.splice(groups.indexOf(g), 1); skip('AI said keep', g); continue; }
+        const keep = new Set(a.keep);
+        g.kept.push(...g.threads.filter((t) => keep.has(t.id)));
+        g.threads = g.threads.filter((t) => !keep.has(t.id));
+        if (!g.threads.length) { groups.splice(groups.indexOf(g), 1); skip('AI said keep'); continue; }
+        if (a.reason) g.aiReason = a.reason;
+      } catch { groups.splice(groups.indexOf(g), 1); skip('AI wasn’t sure'); }
+    }
+    ai.destroy?.();
+  }
+
+  groups.sort((a, b) => b.threads.length - a.threads.length);
+  leftAlone.sort((a, b) => b.n - a.n);
+  return { groups, skipped, leftAlone: leftAlone.slice(0, 40), scanned: threads.length, total: ids.length, ai: !!ai, partial: cleanup.stopped };
+}
+
+async function cleanupLabel() {
+  const d = new Date();
+  const p = (x) => String(x).padStart(2, '0');
+  const name = `${CLEANUP_PREFIX}${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}`;
+  return hiddenLabel(name);
+}
+
+// Trash and Spam are one run under one hidden label, so Restore all puts both back.
+async function cleanupMove(trash, spam = []) {
+  const lab = await cleanupLabel();
+  const all = [...trash, ...spam];
+  const bytes = all.reduce((n, g) => n + g.threads.reduce((k, t) => k + (t.size || 0), 0), 0);
+  store.set('cleanupFreed', store.get('cleanupFreed', 0) + bytes);
+  const count = (gs) => gs.reduce((s, g) => s + g.threads.length, 0);
+  const run = { id: lab.id, name: lab.name, at: Date.now(), bytes, emails: count(all), spam: count(spam), senders: all.map((g) => g.name) };
+  store.set('cleanupRuns', [run, ...cleanupRuns()].slice(0, 30));   // saved first, so a half-done run can still be restored
+  for (const [gs, to] of [[trash, 'TRASH'], [spam, 'SPAM']]) {
+    const ids = gs.flatMap((g) => g.threads.flatMap((t) => t.msgIds));
+    for (let i = 0; i < ids.length; i += 1000) {
+      await api('/messages/batchModify', { method: 'POST', body: { ids: ids.slice(i, i + 1000), addLabelIds: [lab.id, to], removeLabelIds: ['INBOX'] } });
+    }
+  }
+  return run;
+}
+
+// Put a whole run back: out of Trash and Spam, into the Inbox, then drop its hidden label.
+async function cleanupRestore(run) {
+  const ids = [];
+  let page = '';
+  do {
+    const r = await api(`/messages?labelIds=${run.id}&includeSpamTrash=true&maxResults=500${page ? '&pageToken=' + page : ''}`);
+    for (const m of r.messages || []) ids.push(m.id);
+    page = r.nextPageToken || '';
+  } while (page);
+  for (let i = 0; i < ids.length; i += 1000) {
+    await api('/messages/batchModify', { method: 'POST', body: { ids: ids.slice(i, i + 1000), addLabelIds: ['INBOX'], removeLabelIds: ['TRASH', 'SPAM', run.id] } });
+  }
+  await api(`/labels/${run.id}`, { method: 'DELETE' }).catch(() => {});
+  const was = cleanupRuns().find((r) => r.id === run.id);
+  if (was?.bytes) store.set('cleanupFreed', Math.max(0, store.get('cleanupFreed', 0) - was.bytes));
+  store.set('cleanupRuns', cleanupRuns().filter((r) => r.id !== run.id));
+  return ids.length;
+}
+
+// How much Google storage mail takes. Gmail gives each email's size (5 units to ask), so these are read at
+// the scan's pace. Trash still counts toward the 15 GB that Gmail, Drive and Photos share until it's
+// emptied (by Gmail after 30 days, or by hand), so what a clean-up moves is space freed once Trash empties.
+const bytesLabel = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : fileSize(n));
+async function labelMessageIds(labelId) {
+  const ids = [];
+  let page = '';
+  do {
+    const r = await api(`/messages?labelIds=${labelId}&includeSpamTrash=true&maxResults=500${page ? '&pageToken=' + page : ''}`);
+    for (const m of r.messages || []) ids.push(m.id);
+    page = r.nextPageToken || '';
+  } while (page);
+  return ids;
+}
+async function messagesSize(ids, onProgress) {
+  let total = 0, done = 0, nextSlot = Date.now();
+  await mapLimit(ids, 4, async (id) => {
+    const wait = nextSlot - Date.now();
+    nextSlot = Math.max(nextSlot, Date.now()) + CLEANUP_PACE_MS;
+    if (wait > 0) await sleep(wait);
+    try { total += (await cleanupApi(`/messages/${id}?format=minimal`)).sizeEstimate || 0; } catch (e) { if (e instanceof AuthError) throw e; }
+    if (++done % 25 === 0) onProgress?.(done / ids.length);
+  });
+  return total;
+}
+// A clean-up made before sizes were kept: measure its emails once, and add them to the running total.
+async function cleanupRunBytes(run) {
+  if (run.bytes != null) return run.bytes;
+  const bytes = await messagesSize(await labelMessageIds(run.id));
+  store.set('cleanupRuns', cleanupRuns().map((r) => (r.id === run.id ? { ...r, bytes } : r)));
+  store.set('cleanupFreed', store.get('cleanupFreed', 0) + bytes);
+  run.bytes = bytes;
+  return bytes;
+}
+
+// Unsubscribe: an email from the user's Gmail when the sender takes one (quiet, no tabs); senders that only
+// have a web page are handed back so the user opens each one themselves.
+async function cleanupUnsubscribe(groups) {
+  const sent = [], web = [], none = [];
+  const asked = unsubscribedOn();
+  for (const g of groups) {
+    const ways = g.threads.map((t) => t.unsubWay).filter(Boolean);
+    const u = ways.find((x) => x.mail) || ways[0];
+    if (u?.mail) {
+      try {
+        const url = new URL(u.mail);
+        await sendMail({ To: decodeURIComponent(url.pathname), Subject: url.searchParams.get('subject') || 'unsubscribe' }, url.searchParams.get('body') || 'unsubscribe');
+        sent.push(g);
+        asked[g.addr] = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      } catch (e) { if (e instanceof AuthError) throw e; if (u.web) web.push({ g, u }); else none.push(g); }
+    } else if (u?.web) web.push({ g, u });
+    else none.push(g);
+  }
+  store.set('unsubscribed', asked);
+  return { sent, web, none };
+}
+
+// One email, in a window over the clean-up list, to check before ticking. Closing it goes back to the list.
+async function cleanupPeek(threadId, subject) {
+  const dlg = el('dialog', { class: 'cleanup cleanup-peek wide', 'aria-label': subject });
+  const close = el('button', { type: 'button', class: 'icon-btn cleanup-close', 'aria-label': 'Close', title: 'Close' }, '\u2715');
+  const body = el('div', { class: 'cleanup-body' }, el('p', { class: 'hint' }, 'Loading\u2026'));
+  const done = el('button', { type: 'button', class: 'primary' }, 'Back to the list');
+  const shut = () => { dlg.close(); dlg.remove(); };
+  close.addEventListener('click', shut);
+  done.addEventListener('click', shut);
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); shut(); });
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) shut(); });
+  dlg.append(el('div', { class: 'cleanup-head' }, [el('h2', {}, subject), close]), body, el('div', { class: 'cleanup-foot' }, done));
+  document.body.append(dlg);
+  dlg.showModal();
+  try {
+    const thread = await api(`/threads/${threadId}?format=full`);
+    const msgs = (thread.messages || []).filter((m) => !(m.labelIds || []).includes('DRAFT'));
+    body.replaceChildren(renderMessages(msgs));
+    body.querySelector('details.message:last-of-type')?.setAttribute('open', '');
+  } catch (e) {
+    if (!(e instanceof AuthError)) body.replaceChildren(el('p', {}, 'Could not open it: ' + e.message));
+  }
+}
+
+function openCleanup() {
+  $('#cleanup')?.remove();
+  cleanup.stopped = false;
+  const dlg = el('dialog', { id: 'cleanup', class: 'cleanup', 'aria-label': 'Guided Inbox Cleanup' });
+  const body = el('div', { class: 'cleanup-body' });
+  const foot = el('div', { class: 'cleanup-foot' });
+  const close = el('button', { type: 'button', class: 'icon-btn cleanup-close', 'aria-label': 'Close', title: 'Close' }, '✕');
+  close.addEventListener('click', () => { cleanup.stopped = true; dlg.close(); dlg.remove(); });
+  dlg.addEventListener('cancel', () => { cleanup.stopped = true; dlg.remove(); });
+  dlg.append(el('div', { class: 'cleanup-head' }, [el('h2', {}, 'Guided Inbox Cleanup'), close]), body, foot);
+  document.body.append(dlg);
+  dlg.showModal();
+
+  const button = (text, cls, run) => { const b = el('button', { type: 'button', class: cls }, text); b.addEventListener('click', run); return b; };
+
+  const intro = () => {
+    const runs = cleanupRuns();
+    const trashBox = el('div', { class: 'cleanup-ai' });
+    const showTrash = (n) => {
+      const t = store.get('trashSize', null);
+      const known = t ? el('span', { class: 'hint' }, `Your Trash holds about ${bytesLabel(t.bytes)} (${t.count.toLocaleString()} emails, measured ${dateLabel(t.at, true)}). `
+        + 'It still counts toward your Google storage until it\u2019s emptied: Gmail does that 30 days after each email went in, or you can empty it in Gmail now.') : null;
+      const mins = Math.max(1, Math.round(n * CLEANUP_PACE_MS / 60000));
+      const measure = button(t ? 'Measure again' : 'Measure its size', '', async () => {
+        measure.disabled = true;
+        const bar = el('progress', { max: '1' });
+        trashBox.replaceChildren(el('span', { class: 'hint' }, `Measuring your Trash (${n.toLocaleString()} emails, about ${mins} minute${mins === 1 ? '' : 's'})…`), bar);
+        try {
+          const ids = await labelMessageIds('TRASH');
+          const bytes = await messagesSize(ids, (f) => { bar.value = f; });
+          store.set('trashSize', { bytes, count: ids.length, at: Date.now() });
+        } catch (e) { if (!(e instanceof AuthError)) toast('Could not measure Trash: ' + e.message); }
+        if (dlg.isConnected) showTrash(n);
+      });
+      trashBox.replaceChildren(known || el('span', { class: 'hint' }, `Your Trash has ${n.toLocaleString()} emails. They still take up Google storage until Trash is emptied.`), measure);
+    };
+    trashBox.append(el('span', { class: 'hint' }, 'Checking your Trash…'));
+    api('/labels/TRASH').then((l) => showTrash(l.messagesTotal || 0)).catch(() => trashBox.remove());
+    const aiBox = el('div', { class: 'cleanup-ai' }, el('span', { class: 'hint' }, 'Checking for Google’s small local AI…'));
+    cleanupAiStatus().then((st) => {
+      if (st === 'available') {
+        const cb = el('input', { type: 'checkbox', ...(cleanupAiOn() ? { checked: '' } : {}) });
+        cb.addEventListener('change', () => store.set('cleanupAi', cb.checked));
+        aiBox.replaceChildren(el('label', { class: 'cleanup-ai-on' }, [cb, el('span', {}, [el('b', {}, 'Google’s small local AI is installed. '), 'Use it to double-check the list. It runs on this computer, so your emails stay here: nothing is sent to Google or anyone else.'])]));
+      } else if (st === 'downloadable' || st === 'downloading') {
+        const get = button('Get the small local AI', '', async () => {
+          get.disabled = true;
+          const bar = el('progress', { max: '1' });
+          const note = el('span', { class: 'hint' }, 'Downloading… You can close this; the browser carries on.');
+          aiBox.replaceChildren(note, bar);
+          // Chromium can say "downloadable" when the model is already here but blocked (a graphics card it
+          // won't use), and then never moves. Don't leave the bar sitting at 0%.
+          let moved = false;
+          const stuck = setTimeout(() => {
+            if (moved || !dlg.isConnected) return;
+            aiBox.replaceChildren(el('span', { class: 'hint' }, 'Your browser isn’t letting the AI run on this computer. It may already be '
+              + 'downloaded but blocked. The list works without it, using rules only.'));
+          }, 30_000);
+          try {
+            await cleanupGetAi((f) => { if (f > 0) moved = true; bar.value = f; note.textContent = `Downloading Google’s small local AI: ${Math.round(f * 100)}%`; });
+            clearTimeout(stuck);
+            if (dlg.isConnected) intro();
+          } catch (e) { clearTimeout(stuck); aiBox.replaceChildren(el('span', { class: 'hint' }, 'The AI download didn’t work: ' + e.message)); }
+        });
+        aiBox.replaceChildren(el('span', { class: 'hint' }, 'Google’s small local AI can double-check the list. It runs on this computer, so your emails stay here: nothing is sent to Google or anyone else. It’s a one-time download of a few GB.'), get);
+      } else aiBox.replaceChildren(el('span', { class: 'hint' }, 'Google’s small local AI isn’t available in this browser, so the list uses rules only.'));
+    });
+    body.replaceChildren(
+      el('p', {}, 'StediMail looks through your Inbox for senders whose emails look like bulk mail: ads, newsletters, alerts. '
+        + 'It shows them as a list. Nothing is chosen, and nothing happens until you choose Trash, Unsubscribe or Spam and confirm.'),
+      el('p', { class: 'hint' }, 'Never suggested: anyone you’ve replied to or emailed, your contacts, starred, '
+        + 'board, nested or snoozed mail. Emails marked Important, from the last week, with attachments, other labels, or about money, legal, '
+        + 'medical, travel or account security are kept out. Chosen emails go to Trash, where Gmail keeps them 30 days, and '
+        + 'each clean-up can be restored in one click.'),
+      aiBox,
+      trashBox,
+      ...(store.get('cleanupFreed', 0) ? [el('p', { class: 'cleanup-freed' }, `Clean-ups so far have cleared about ${bytesLabel(store.get('cleanupFreed', 0))} of junk from your Google storage (once Trash is emptied).`)] : []),
+      ...(runs.length ? [el('h3', {}, 'Earlier clean-ups'), el('div', { class: 'cleanup-runs' }, runs.map((r) => {
+        const restore = button('Restore all', '', async () => {
+          if (!await askConfirm(`Put ${r.emails.toLocaleString()} emails from this clean-up back in your Inbox?`, 'Restore all', { danger: false })) return;
+          restore.disabled = true; restore.textContent = 'Restoring…';
+          try { const n = await cleanupRestore(r); toast(`Restored ${n.toLocaleString()} emails to your Inbox`); loadBoard(); intro(); }
+          catch (e) { restore.disabled = false; restore.textContent = 'Restore all'; toast('Could not restore: ' + e.message); }
+        });
+        const size = el('div', { class: 'hint' }, r.bytes != null ? `Frees about ${bytesLabel(r.bytes)} once Trash is emptied` : 'Measuring its size…');
+        if (r.bytes == null) cleanupRunBytes(r).then((b) => { size.textContent = `Frees about ${bytesLabel(b)} once Trash is emptied`; }).catch(() => { size.textContent = ''; });
+        return el('div', { class: 'cleanup-run' }, [
+          el('div', {}, [el('b', {}, dateLabel(r.at, true)), size, el('div', { class: 'hint' },
+            `${r.emails.toLocaleString()} emails from ${r.senders.length} sender${r.senders.length === 1 ? '' : 's'}: ${r.senders.slice(0, 4).join(', ')}${r.senders.length > 4 ? '…' : ''}`)]),
+          restore]);
+      }))] : []));
+    foot.replaceChildren(button('Close', '', () => close.click()), button('Look for trash', 'primary', scan));
+  };
+
+  const scan = async () => {
+    const text = el('p', {}, 'Starting…');
+    const note = el('p', { class: 'hint' });
+    const bar = el('progress', { max: '1' });
+    body.replaceChildren(text, bar, note,
+      el('p', { class: 'hint' }, 'This reads your Inbox slowly so Gmail doesn’t block StediMail. A big Inbox takes a few minutes.'));
+    const stop = button('Stop and show what’s found', '', () => { cleanup.stopped = true; stop.disabled = true; });
+    foot.replaceChildren(stop);
+    try {
+      cleanup.scan = await cleanupRunScan((t) => { note.textContent = t; },
+        (t, f) => { text.textContent = t; if (f != null) bar.value = f; else bar.removeAttribute('value'); });
+      results();
+    } catch (e) {
+      if (e instanceof AuthError) { close.click(); return; }
+      body.replaceChildren(el('p', {}, 'Could not finish: ' + e.message));
+      foot.replaceChildren(button('Close', '', () => close.click()), button('Try again', 'primary', () => { cleanup.stopped = false; scan(); }));
+    }
+  };
+
+  const results = () => {
+    const { groups, skipped, leftAlone = [], scanned, total, ai, partial } = cleanup.scan;
+    dlg.classList.add('wide');
+    dlg.querySelector('.cleanup-future')?.remove();
+    // Each card has its own choices (Paul, 2026-11-12): Trash, Unsubscribe, Spam. None = left alone.
+    // Spam moves them to Gmail's Spam (and Gmail then sends that sender there), so it replaces Trash.
+    const choice = new Map();                          // addr -> { trash, unsub, spam }
+    const of = (g) => choice.get(g.addr) || { trash: false, unsub: false, spam: false };
+    const sum = el('span', { class: 'cleanup-sum' });
+    const go = button('Do it', 'danger', () => confirmDo());
+    const plan = () => {
+      const live = groups.filter((g) => rows.find((r) => r.addr === g.addr)?.isConnected);
+      const trash = live.filter((g) => of(g).trash), spam = live.filter((g) => of(g).spam), unsub = live.filter((g) => of(g).unsub);
+      return { trash, spam, unsub, n: (gs) => gs.reduce((k, g) => k + g.threads.length, 0) };
+    };
+    const update = () => {
+      const p = plan();
+      const parts = [];
+      if (p.trash.length) parts.push(`${p.trash.length} to Trash (${p.n(p.trash).toLocaleString()} emails)`);
+      if (p.spam.length) parts.push(`${p.spam.length} to Spam (${p.n(p.spam).toLocaleString()} emails)`);
+      if (p.unsub.length) parts.push(`${p.unsub.length} unsubscribe`);
+      sum.textContent = parts.length ? parts.join(' · ') : 'Nothing chosen';
+      go.disabled = !parts.length;
+    };
+    const rows = groups.map((g) => {
+      const btns = {};
+      const paint = () => {
+        const c = of(g);
+        for (const k of ['trash', 'unsub', 'spam']) btns[k].setAttribute('aria-pressed', String(c[k]));
+        row.classList.toggle('picked', c.trash || c.unsub || c.spam);
+      };
+      const set = (k, on) => {
+        const c = { ...of(g), [k]: on };
+        if (k === 'spam' && on) c.trash = false;
+        if (k === 'trash' && on) c.spam = false;
+        // Unsubscribing also trashes what's already here, like the Unsubscribe button in an email (Paul,
+        // 2026-11-12); Trash can still be switched back off to keep them. Spam already moves them.
+        if (k === 'unsub' && on && !c.spam) c.trash = true;
+        choice.set(g.addr, c);
+        paint(); update();
+      };
+      for (const [k, label] of [['trash', 'Trash'], ['unsub', 'Unsubscribe'], ['spam', 'Spam']]) {
+        btns[k] = button(label, 'cleanup-act cleanup-act-' + k, () => set(k, !of(g)[k]));
+      }
+      const notTrash = button('Not trash', 'cleanup-never', () => {
+        store.set('cleanupNever', [...cleanupNever(), g.addr]);
+        choice.delete(g.addr); row.remove(); update();
+        toast(`${g.name} won’t be suggested again`);
+      });
+      const oldest = Math.min(...g.threads.map((t) => t.date));
+      const row = el('div', { class: 'cleanup-row' }, [
+        el('div', { class: 'cleanup-acts' }, [btns.trash, btns.unsub, btns.spam]),
+        el('div', { class: 'cleanup-who' }, [
+          el('div', {}, [el('b', {}, g.name), ' ', el('span', { class: 'hint' }, g.addr)]),
+          el('div', { class: 'cleanup-count' }, `${g.threads.length.toLocaleString()} email${g.threads.length === 1 ? '' : 's'}`
+            + (g.kept.length ? ` (${g.kept.length} kept out)` : '') + ` · since ${dateLabel(oldest)}`),
+          el('div', { class: 'cleanup-why' }, g.aiReason || (g.why.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.')),
+          ...(g.warn ? [el('div', { class: 'cleanup-warn' }, `⚠ ${g.warn} Could be important: check before choosing.`)] : []),
+          el('ul', { class: 'cleanup-subjects' }, g.threads.slice(0, 3).map((t) => {
+            const open = el('button', { type: 'button', class: 'cleanup-subj', title: 'Open this email' }, [el('span', {}, t.subject), el('span', { class: 'cleanup-open' }, ' Open ↗')]);
+            open.addEventListener('click', () => cleanupPeek(t.id, t.subject));
+            return el('li', {}, open);
+          })),
+          notTrash,
+        ])]);
+      row.addr = g.addr;
+      row.size = g.threads.length;
+      row.warn = !!g.warn;
+      row.setTrash = (on) => { if (row.isConnected && of(g).trash !== on) set('trash', on); };
+      row.clear = () => { choice.delete(g.addr); paint(); };
+      if (g.warn) row.classList.add('warn');
+      paint();
+      return row;
+    });
+    const skippedText = Object.entries(skipped).sort((a, b) => b[1] - a[1]).map(([why, n]) => `${n} ${why}`).join(' · ');
+    body.replaceChildren(
+      el('p', {}, groups.length
+        ? `${groups.length} sender${groups.length === 1 ? '' : 's'} look like bulk mail. For each one, choose Trash, Unsubscribe or Spam, or leave it alone.`
+        : 'Nothing looks like junk. Your Inbox is in good shape.'),
+      el('p', { class: 'hint' }, `Read ${scanned.toLocaleString()} of ${total.toLocaleString()} emails${partial ? ' (stopped early)' : ''}. `
+        + (ai ? 'The small local AI double-checked each sender.' : cleanupAiOn() ? 'Google’s small local AI isn’t ready, so these are rules only.' : 'The small local AI is switched off, so these are rules only.')),
+      ...(rows.length > 1 ? [el('div', { class: 'cleanup-bulk' }, [
+        // Red, and asked first: these choose without looking at each card (Paul, 2026-11-12).
+        button('Trash all', 'danger', async () => {
+          const these = rows.filter((r) => r.isConnected && !r.warn);
+          const n = these.reduce((k, r) => k + r.size, 0);
+          if (!await askConfirm(`You\u2019re deciding to trash all of these without reviewing them.\n\n${these.length} senders, ${n.toLocaleString()} emails. Cards marked \u26a0 are left out. Nothing moves until you click Do it.\n\nTrashed emails stay in Gmail\u2019s Trash for 30 days, unless you empty it yourself, so you can still get them back until then.`, 'Confirm')) return;
+          these.forEach((r) => r.setTrash(true));
+        }),
+        button('Trash senders with 3 or fewer emails', 'danger', async () => {
+          const these = rows.filter((r) => r.isConnected && !r.warn && r.size <= 3);
+          const n = these.reduce((k, r) => k + r.size, 0);
+          if (!await askConfirm(`You\u2019re deciding to trash all senders with 3 or fewer emails without reviewing them.\n\n${these.length} senders, ${n.toLocaleString()} emails. Cards marked \u26a0 are left out. Nothing moves until you click Do it.\n\nTrashed emails stay in Gmail\u2019s Trash for 30 days, unless you empty it yourself, so you can still get them back until then.`, 'Confirm')) return;
+          rows.forEach((r) => { if (r.isConnected && !r.warn) r.setTrash(r.size <= 3); });
+        }),
+        button('Clear all choices', '', () => { rows.forEach((r) => r.clear()); update(); }),
+        ...(rows.some((r) => r.warn) ? [el('span', { class: 'hint' }, 'Cards marked ⚠ are never chosen by these buttons.')] : [])])] : []),
+      el('div', { class: 'cleanup-list' }, rows),
+      ...(skippedText ? [el('details', { class: 'cleanup-skipped' }, [el('summary', {}, 'Senders left alone, and why'), el('p', { class: 'hint' }, skippedText),
+        ...(leftAlone.length ? [el('p', {}, 'The biggest ones:'), el('ul', { class: 'cleanup-alone' }, leftAlone.map((x) =>
+          el('li', {}, [el('b', {}, x.name), ` (${x.addr}): ${x.n.toLocaleString()} email${x.n === 1 ? '' : 's'}, ${x.why}`])))] : [])])] : []));
+    foot.replaceChildren(sum, button('Close', '', () => close.click()), go);
+    update();
+
+    async function confirmDo() {
+      const p = plan();
+      const moved = [...p.trash, ...p.spam];
+      const n = p.n(moved);
+      const old = moved.some((g) => g.threads.some((t) => Date.now() - t.date > 2 * 365 * 864e5));
+      const lines = [];
+      if (p.trash.length) lines.push(`Move ${p.n(p.trash).toLocaleString()} emails from ${p.trash.length} sender${p.trash.length === 1 ? '' : 's'} to Trash.`);
+      if (p.spam.length) lines.push(`Report ${p.spam.length} sender${p.spam.length === 1 ? '' : 's'} as spam: ${p.n(p.spam).toLocaleString()} emails go to Spam, and Gmail sends their future mail there too.`);
+      if (p.unsub.length) lines.push(`Unsubscribe from ${p.unsub.length} sender${p.unsub.length === 1 ? '' : 's'}. That can’t be undone from StediMail.`);
+      if (!await askConfirm('Do all of this?\n\n' + lines.join('\n\n')
+        + (moved.length ? '\n\nGmail keeps Trash and Spam for 30 days, and Restore all puts this whole clean-up back in one click.' : ''), 'Do it')) return;
+      if ((n > 500 || old) && !await askConfirm(`Just checking: ${n > 500 ? `that’s ${n.toLocaleString()} emails` : 'some of these are more than 2 years old'}. Go ahead?`, 'Yes, go ahead')) return;
+      go.disabled = true; go.textContent = 'Working…';
+      try {
+        const run = moved.length ? await cleanupMove(p.trash, p.spam) : null;
+        const undo = run && { label: 'Undo', stack: false, run: async () => {
+          try { const k = await cleanupRestore(run); toast(`Restored ${k.toLocaleString()} emails`); loadBoard(); } catch (e) { toast('Could not restore: ' + e.message); }
+        } };
+        if (run) loadBoard();
+        const freed = run?.bytes ? ` That’s about ${bytesLabel(run.bytes)} of Google storage, freed once Trash and Spam are emptied.` : '';
+        const did = run ? `${p.trash.length ? `Moved ${p.n(p.trash).toLocaleString()} emails to Trash. ` : ''}${p.spam.length ? `Reported ${p.spam.length} sender${p.spam.length === 1 ? '' : 's'} as spam. ` : ''}${freed}` : '';
+        if (!p.unsub.length) { dlg.close(); dlg.remove(); toast(did.trim(), undo); return; }
+        body.replaceChildren(el('p', {}, `${did} Unsubscribing…`));
+        foot.replaceChildren();
+        const out = did ? [el('p', {}, did.trim())] : [];
+        const r = await cleanupUnsubscribe(p.unsub);
+        if (r.sent.length) out.push(el('p', {}, `Unsubscribed from ${r.sent.length} sender${r.sent.length === 1 ? '' : 's'} by email. Some take a few days to stop.`));
+        if (r.web.length) out.push(el('p', {}, `${r.web.length} sender${r.web.length === 1 ? ' only unsubscribes' : 's only unsubscribe'} on their website. Open each one to finish:`),
+          el('div', { class: 'cleanup-web' }, r.web.map(({ g, u }) => {
+            const b = button('Open page', '', () => {
+              if (u.oneClick) postOneClick(u.web); else window.open(u.web, '_blank', 'noopener');
+              const all = unsubscribedOn(); all[g.addr] = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); store.set('unsubscribed', all);
+              b.disabled = true; b.textContent = 'Opened';
+            });
+            return el('div', { class: 'cleanup-run' }, [el('b', {}, g.name), b]);
+          })));
+        if (r.none.length) out.push(el('p', { class: 'hint' }, `No unsubscribe option from: ${r.none.map((g) => g.name).join(', ')}. Spam works for those.`));
+        body.replaceChildren(...out);
+        foot.replaceChildren(...(undo ? [button('Undo the moves', '', async () => { await undo.run(); close.click(); })] : []), button('Done', 'primary', () => close.click()));
+      } catch (e) {
+        go.disabled = false; go.textContent = 'Do it';
+        toast('Something didn’t finish: ' + e.message + '. Anything already moved is under Guided Inbox Cleanup → Restore all.');
+      }
+    }
+  };
+  intro();
 }
 
 async function boot() {
