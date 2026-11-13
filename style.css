@@ -874,7 +874,7 @@ dialog.cleanup[open] { display: flex; }
 .cleanup-row:hover { background: rgba(127,127,127,.08); }
 dialog .cleanup-pick { flex: 1 1 auto; display: flex; flex-direction: row; align-items: flex-start; gap: 14px; cursor: pointer; min-width: 0; }
 .cleanup-pick input { width: 22px; height: 22px; margin: 2px 0 0; flex: 0 0 auto; }
-.cleanup-who { min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 15px; }
+.cleanup-who { min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 15px; overflow-wrap: anywhere; }
 .cleanup-who .hint { font-size: 13px; overflow-wrap: anywhere; }
 .cleanup-count { font-size: 14px; opacity: .85; }
 .cleanup-why { font-size: 14px; font-style: italic; opacity: .85; }
@@ -927,7 +927,7 @@ dialog.cleanup.wide .cleanup-never { margin-left: 0; align-self: flex-end; }
 dialog.cleanup-peek { max-width: 1000px; height: calc(100vh - 80px); }
 /* each card: its own three choices down the left (Paul, 2026-11-12) */
 dialog.cleanup.wide .cleanup-list { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
-dialog.cleanup.wide .cleanup-row { display: grid; grid-template-columns: 132px 1fr; align-items: start; gap: 14px; cursor: default; }
+dialog.cleanup.wide .cleanup-row { display: grid; grid-template-columns: 132px minmax(0, 1fr); align-items: start; gap: 14px; cursor: default; }
 .cleanup-acts { display: flex; flex-direction: column; gap: 8px; }
 .cleanup-act { padding: 12px 8px; font-size: 15px; font-weight: 600; border-radius: 10px; text-align: center; }
 .cleanup-act[aria-pressed="true"]::before { content: '\2713  '; }

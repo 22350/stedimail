@@ -6791,6 +6791,63 @@ const CLEANUP_KEEP_DAYS = 14;          // bulk mail marked Important, and a no-r
 const CLEANUP_OLD_DAYS = 90;
 const CLEANUP_NOREPLY = /no[-_.]?reply|do[-_.]?not[-_.]?reply/i;
 const cleanupNoReply = (addr) => CLEANUP_NOREPLY.test(addr.split('@')[0] || '');
+// Automated alert senders (usbank@notifications.usbank.com, alerts@…): bulk mail whose subjects say
+// "payment" or "deposit" without being records. Older than a week they can go (Paul, 2026-11-13).
+const CLEANUP_ALERTS = /(^|[.@_-])(notifications?|alerts?)([.@_-]|$)/i;
+const cleanupAlerts = (addr) => CLEANUP_ALERTS.test(addr);
+// …except tax and fraud alerts, which stay for 2 months (Paul, 2026-11-13).
+const CLEANUP_ALERT_KEEP = /\b(1098|1099|w-?2|tax|fraud|dispute|legal)/i;
+const CLEANUP_ALERT_KEEP_DAYS = 60;
+// Newsletters (an unsubscribe link, not an alert sender): only the last month is current; older ones are
+// always suggested and start chosen for Trash (Paul, 2026-11-13: "if you see newsletter get rid of it").
+const CLEANUP_NEWSLETTER_DAYS = 30;
+// Automated account-security notices (login alerts, codes, password changes) only matter for a while:
+// the last 30 days stay, older ones can go (Paul, 2026-11-13: Facebook's "Did you just log in…").
+const CLEANUP_SECURITY = /security code|verification code|confirmation code|login code|one-time|\b2fa\b|\blog ?in|\bsign[- ]?in|password|\bverify|new device|unusual|suspicious|was this you|is this you|\bcode\b/i;
+const CLEANUP_SECURITY_DAYS = 30;
+const cleanupAutomated = (t) => t.unsub || cleanupNoReply(t.addr) || cleanupAlerts(t.addr) || /^(security|accounts?)[@._-]/i.test(t.addr);
+// A medical office's or insurer's emails about paying or seeing a bill: only the last month is kept
+// (Paul, 2026-11-13). Their other emails (results, appointments, claims) keep the usual protection.
+const CLEANUP_MEDICAL = /health|medical|clinic|hospital|doctor|physician|dental|dentist|pharmacy|psychiatr|therap|patient|mednet|urgent ?care|radiology|labcorp|quest ?diag/i;
+const CLEANUP_BILLING = /\b(bill|billing|statement|payment|pay|paid|balance|invoice|charged?|amount due|autopay)\b/i;
+const CLEANUP_MEDICAL_BILL_DAYS = 30;
+const cleanupMedical = (name, addr) => CLEANUP_MEDICAL.test(`${name} ${addr}`) || CLEANUP_HEALTH_DOMAIN.test(addr);
+// Senders where only the newest few matter: those stay, and the rest can go even if marked Important
+// or from this week (Paul, 2026-11-13: "in reddit we only need to keep the last five notifications").
+const CLEANUP_KEEP_NEWEST = [[/@(.+\.)?redditmail\.com$/i, 5]];
+const cleanupKeepNewest = (addr) => CLEANUP_KEEP_NEWEST.find(([re]) => re.test(addr))?.[1] || 0;
+// Senders whose emails carry a due date: the scan reads these emails' text, and one whose due date passed
+// more than 30 days ago can go even if its subject sounds important (Paul, 2026-11-13: Paychex).
+// One whose due date is closer, or still ahead, is kept.
+// A sender silent this long is likely a former provider (Paul, 2026-11-13: Oscar, no longer his insurer): its
+// emails are no longer held back by subject words, except tax forms. Current providers keep writing, so stay protected.
+const CLEANUP_SILENT_DAYS = 182;
+const CLEANUP_TAX_FORMS = /\b(1095|1098|1099|w-?2|tax)/i;
+const CLEANUP_DUE_SENDERS = /@(.+\.)?paychex\.com$/i;
+const CLEANUP_DUE_PAST_DAYS = 30;
+// Those senders' emails older than 30 days can go too, except tax forms and anything to sign (Paul, 2026-11-13).
+const CLEANUP_DUE_SENDER_DAYS = 30;
+const CLEANUP_KEEP_FOREVER = /\b(w-?2|w-?3|w-?4|1095|1098|1099|form 94[0-5]|tax)\b|\bsign(?![- ]?(in|on|up)\b)|signature|amendment|docusign/i;
+const CLEANUP_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+// The first due date in an email's text, as ms, or null. A date without a year takes the email's year.
+function cleanupDueDate(text, sentAt) {
+  const date = '(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?|(\\d{4})-(\\d{2})-(\\d{2})'
+    + '|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?';
+  const re = new RegExp('\\b(?:(?:due|deadline)(?:\\s+date)?(?:[^.\\n]{0,60}?\\b(?:is|was|of))?|(?:pay|print|submit|complete|file|approve|sign)\\w*[^.\\n]{0,40}?\\bby)'
+    + '\\b[\\s:,-]*(?:on\\s+)?(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day,?\\s+)?(?:' + date + ')', 'i');
+  const m = re.exec(text);
+  if (!m) return null;
+  const sent = new Date(sentAt);
+  let y, mo, d;
+  if (m[1]) { mo = +m[1] - 1; d = +m[2]; y = m[3] ? +m[3] : null; }
+  else if (m[4]) { y = +m[4]; mo = +m[5] - 1; d = +m[6]; }
+  else { mo = CLEANUP_MONTHS.indexOf(m[7].toLowerCase()); d = +m[8]; y = m[9] ? +m[9] : null; }
+  if (y != null && y < 100) y += 2000;
+  if (mo < 0 || mo > 11 || d < 1 || d > 31) return null;
+  let due = new Date(y ?? sent.getFullYear(), mo, d).getTime();
+  if (y == null && due < sentAt - 180 * 864e5) due = new Date(sent.getFullYear() + 1, mo, d).getTime();   // "due Jan 5" sent in December
+  return due;
+}
 const CLEANUP_MIN_SCORE = 4;
 const CLEANUP_PACE_MS = 40;           // 25 emails a second = 7,500 of Gmail's 15,000 units a minute
 const CLEANUP_SENSITIVE = new RegExp([
@@ -6800,7 +6857,7 @@ const CLEANUP_SENSITIVE = new RegExp([
   'security code', 'verification code', 'verify', 'password', 'sign-in', 'sign in', 'login', '2fa', 'one-time',
   'booking', 'reservation', 'itinerary', 'ticket', 'flight', 'boarding', 'confirmation',
   'order #', 'order number', 'your order', 'shipped', 'delivered',
-  'lease', 'contract', 'agreement', 'signature', 'docusign', 'government', 'dmv', 'social security',
+  'lease', 'contract', 'agreement', 'amendment', 'print and sign', 'signature', 'docusign', 'government', 'dmv', 'social security',
 ].join('|'), 'i');
 // Health insurers whose address doesn't say so.
 const CLEANUP_HEALTH_DOMAIN = /@(.+\.)?(hioscar|oscarhealth|anthem|aetna|cigna|uhc|kaiserpermanente|kp|bcbs[a-z]*|humana|centene|ambetter|molinahealthcare|healthnet)\.(com|org)$/i;
@@ -6810,6 +6867,7 @@ const CLEANUP_HEALTH_DOMAIN = /@(.+\.)?(hioscar|oscarhealth|anthem|aetna|cigna|u
 const CLEANUP_SENDER_WORDS = new RegExp(CLEANUP_SENSITIVE.source + '|health|insur|medicaid', 'i');
 function cleanupWarn(g) {
   if (CLEANUP_HEALTH_DOMAIN.test(g.addr)) return 'Looks like a health insurer.';
+  if (cleanupMedical(g.name, g.addr)) return 'Looks like a medical office.';
   if (CLEANUP_SENSITIVE_DOMAIN.test(g.addr.split('@')[1] || '')) return 'A government address.';
   const m = `${g.name} ${g.addr}`.match(CLEANUP_SENDER_WORDS);
   return m ? `The sender mentions \u201c${m[0].toLowerCase()}\u201d.` : null;
@@ -6875,15 +6933,42 @@ function cleanupVeto(t, contacts) {
 
 // Why one email stays out of the group (step 3), or null. Emails from the last week that pass this
 // don't count toward the junk score but go with the sender if it's chosen (Paul, 2026-11-13).
-function cleanupKeep(t, now, contacts) {
+function cleanupKeep(t, now, contacts, newestOnly = false, silent = false) {
   const age = now - t.date;
-  const bulk = t.unsub || cleanupNoReply(t.addr);
+  const alerts = cleanupAlerts(t.addr);
+  const bulk = t.unsub || cleanupNoReply(t.addr) || alerts;
+  const newsletter = t.unsub && !alerts;
   if (t.labels.has('STARRED')) return 'starred';                      // just this email, not the whole sender (Paul, 2026-11-13)
+  if (CLEANUP_DUE_SENDERS.test(t.addr)) {                              // Paychex
+    if ([...t.labels].some((l) => l.startsWith('Label_'))) return 'has a label';
+    if (t.attachments) return 'has an attachment';
+    if (CLEANUP_KEEP_FOREVER.test(t.subject)) return 'tax form or something to sign';
+    if (t.due != null && now - t.due <= CLEANUP_DUE_PAST_DAYS * 864e5) return 'due date not yet 30 days past';
+    if (age < CLEANUP_DUE_SENDER_DAYS * 864e5) return 'from the last month';
+    return null;
+  }
+  if (cleanupMedical(t.name || '', t.addr) && CLEANUP_BILLING.test(t.subject)) {
+    if (age < CLEANUP_MEDICAL_BILL_DAYS * 864e5) return 'medical bill from the last month';
+    if ([...t.labels].some((l) => l.startsWith('Label_'))) return 'has a label';
+    if (t.attachments) return 'has an attachment';
+    return null;
+  }
+  if (alerts && age < CLEANUP_RECENT_DAYS * 864e5) return 'alert from the last week';
+  if (alerts && age < CLEANUP_ALERT_KEEP_DAYS * 864e5 && CLEANUP_ALERT_KEEP.test(t.subject)) return 'tax or fraud alert, last 2 months';
+  if (cleanupAutomated(t) && CLEANUP_SECURITY.test(t.subject)) {
+    if (age < CLEANUP_SECURITY_DAYS * 864e5) return 'security notice from the last month';
+    if ([...t.labels].some((l) => l.startsWith('Label_'))) return 'has a label';
+    return null;
+  }
+  if (newsletter && age < CLEANUP_NEWSLETTER_DAYS * 864e5) return 'newsletter from the last month';
   // Gmail marks lots of bulk mail Important by itself: for bulk mail only the last 2 weeks stay (Paul, 2026-11-13).
-  if (t.labels.has('IMPORTANT') && (!bulk || age < CLEANUP_KEEP_DAYS * 864e5)) return 'marked Important';
+  if (t.labels.has('IMPORTANT') && !newestOnly && (!bulk || (!alerts && age < CLEANUP_KEEP_DAYS * 864e5))) return 'marked Important';
   if ([...t.labels].some((l) => l.startsWith('Label_'))) return 'has a label';
-  if (t.attachments) return 'has an attachment';
-  if (CLEANUP_SENSITIVE.test(t.subject)) return 'looks important';     // the sender's name and address give a warning instead
+  // Newsletters with pictures look like they carry attachments to the metadata StediMail reads (WalletHub).
+  if (t.attachments && !newsletter) return 'has an attachment';
+  if (silent && CLEANUP_TAX_FORMS.test(t.subject)) return 'tax form';
+  const word = !alerts && !silent && t.subject.match(CLEANUP_SENSITIVE);
+  if (word) return `looks important (\u201c${word[0].toLowerCase()}\u201d)`;     // the sender's name and address give a warning instead
   // Official government mail stays; their subscription mail (it has an unsubscribe link) doesn't (Paul, 2026-11-13).
   if (CLEANUP_SENSITIVE_DOMAIN.test(t.addr.split('@')[1] || '') && !t.unsub) return 'government sender';
   if (contacts.has(t.addr) && age < CLEANUP_KEEP_DAYS * 864e5) return 'no-reply contact, last 2 weeks';
@@ -6896,6 +6981,7 @@ function cleanupScore(list, now) {
   let score = 0;
   const why = [];
   if (share((t) => t.unsub) >= .5) { score += 2; why.push('has an unsubscribe link'); }
+  else if (list.length && cleanupAlerts(list[0].addr)) { score += 2; why.push('automated alerts'); }
   const promo = share((t) => t.labels.has('CATEGORY_PROMOTIONS') || t.labels.has('CATEGORY_SOCIAL'));
   const upd = share((t) => t.labels.has('CATEGORY_UPDATES') || t.labels.has('CATEGORY_FORUMS'));
   if (promo >= .5) { score += 2; why.push('Gmail files it as Promotions/Social'); }
@@ -6942,6 +7028,23 @@ async function cleanupRunScan(note, progress) {
     }
   });
 
+  // Due-date senders: read each email's text for its due date (Paul, 2026-11-13).
+  const dueOnes = threads.filter((t) => CLEANUP_DUE_SENDERS.test(t.addr));
+  let read = 0;
+  await mapLimit(dueOnes, 4, async (t) => {
+    if (cleanup.stopped) return;
+    const wait = nextSlot - Date.now();
+    nextSlot = Math.max(nextSlot, Date.now()) + CLEANUP_PACE_MS * 2;      // a full email costs twice as much
+    if (wait > 0) await sleep(wait);
+    try {
+      const m = await cleanupApi(`/messages/${t.msgIds[0]}?format=full`, note);
+      const plain = findPart(m.payload, 'text/plain'), html = findPart(m.payload, 'text/html');
+      const body = plain ? decodePart(plain) : html ? decodeEntities(decodePart(html).replace(/<[^>]+>/g, ' ')) : '';
+      t.due = cleanupDueDate(`${t.subject}\n${m.snippet || ''}\n${body}`.replace(/[ \t ]+/g, ' '), t.date);
+    } catch (e) { if (e instanceof AuthError) throw e; }
+    progress(`Looking for due dates… ${++read} of ${dueOnes.length}`, read / dueOnes.length);
+  });
+
   progress('Checking your contacts…');
   const contacts = new Set((await loadContacts()).map((c) => c.addr));
   const never = cleanupNever();
@@ -6966,9 +7069,12 @@ async function cleanupRunScan(note, progress) {
     g.kept = [];
     g.threads = [];
     g.recent = [];
-    const keepWhy = {};
-    for (const t of g.all) {
-      const k = cleanupKeep(t, now, contacts);
+    const keepWhy = g.keepWhy = {};                      // shown on the card (Paul, 2026-11-13)
+    const newest = cleanupKeepNewest(g.addr);
+    const order = newest ? [...g.all].sort((a, b) => b.date - a.date) : g.all;
+    g.silent = now - Math.max(...g.all.map((t) => t.date)) > CLEANUP_SILENT_DAYS * 864e5;
+    for (const [i, t] of order.entries()) {
+      const k = i < newest ? `one of the newest ${newest}` : cleanupKeep(t, now, contacts, newest > 0, g.silent);
       if (k) { keepWhy[k] = (keepWhy[k] || 0) + 1; g.kept.push(t); }
       else (now - t.date < CLEANUP_RECENT_DAYS * 864e5 ? g.recent : g.threads).push(t);
     }
@@ -6979,10 +7085,12 @@ async function cleanupRunScan(note, progress) {
       continue;
     }
     const { score, why } = cleanupScore(g.threads, now);
-    if (score < CLEANUP_MIN_SCORE) { skip('doesn’t look like bulk mail', g); continue; }
+    g.newsletter = !cleanupAlerts(g.addr) && g.threads.filter((t) => t.unsub).length / g.threads.length >= .5;
+    g.medicalBills = cleanupMedical(g.name, g.addr) && g.threads.every((t) => CLEANUP_BILLING.test(t.subject));
+    if (score < CLEANUP_MIN_SCORE && !g.newsletter && !g.medicalBills) { skip('doesn’t look like bulk mail', g); continue; }
     g.score = score;
     g.warn = cleanupWarn(g);
-    g.why = why;
+    g.why = g.silent ? [...why, 'nothing from them in 6 months'] : why;
     g.threads = [...g.threads, ...g.recent].sort((a, b) => b.date - a.date);   // this week's go too if chosen
     groups.push(g);
   }
@@ -7168,11 +7276,13 @@ function openCleanup() {
     api('/labels/TRASH').then((l) => showTrash(l.messagesTotal || 0)).catch(() => trashBox.remove());
     body.replaceChildren(
       el('p', {}, 'StediMail looks through your Inbox for senders whose emails look like bulk mail: ads, newsletters, alerts. '
-        + 'It shows them as a list. Nothing is chosen, and nothing happens until you choose Trash, Unsubscribe or Spam and confirm.'),
+        + 'It shows them as a list. Newsletters older than a month start chosen for Trash; you choose the rest. '
+        + 'Nothing happens until you confirm.'),
       el('p', { class: 'hint' }, 'Never suggested: anyone you’ve replied to or emailed, your contacts, '
         + 'board, nested or snoozed mail. Kept out: starred emails, emails with attachments or other labels, emails about money, legal, '
         + 'medical, travel or account security, and official government mail. Emails marked Important are kept out too, '
-        + 'except newsletters and alerts older than 2 weeks. Choosing a sender also takes their emails from this week. '
+        + 'except newsletters older than 2 weeks. Automated alerts (like a bank’s notifications address) can go once they’re a week old. '
+        + 'Newsletters keep their last month. Choosing any other sender also takes their emails from this week. '
         + 'Chosen emails go to Trash, where Gmail keeps them 30 days, and each clean-up can be restored in one click.'),
       trashBox,
       ...(store.get('cleanupFreed', 0) ? [el('p', { class: 'cleanup-freed' }, `Clean-ups so far have cleared about ${bytesLabel(store.get('cleanupFreed', 0))} of junk from your Google storage (once Trash is emptied).`)] : []),
@@ -7269,6 +7379,8 @@ function openCleanup() {
           el('div', { class: 'cleanup-count' }, `${g.threads.length.toLocaleString()} email${g.threads.length === 1 ? '' : 's'}`
             + (g.recent.length ? `, ${g.recent.length} from this week` : '')
             + (g.kept.length ? ` (${g.kept.length} kept out)` : '') + ` · since ${dateLabel(oldest)}`),
+          ...(g.kept.length ? [el('div', { class: 'cleanup-kept hint' }, 'Kept out: ' + Object.entries(g.keepWhy)
+            .filter(([w]) => w !== 'newer than a week').sort((a, b) => b[1] - a[1]).map(([w, n]) => `${n} ${w}`).join(', ') + '.')] : []),
           el('div', { class: 'cleanup-why' }, (g.why.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.')),
           ...(g.warn ? [el('div', { class: 'cleanup-warn' }, `⚠ ${g.warn} Could be important: check before choosing.`)] : []),
           el('ul', { class: 'cleanup-subjects' }, g.threads.slice(0, 3).map((t) => {
@@ -7314,6 +7426,7 @@ function openCleanup() {
         ...(leftAlone.length ? [el('p', {}, 'The biggest ones:'), el('ul', { class: 'cleanup-alone' }, leftAlone.map((x) =>
           el('li', {}, [el('b', {}, x.name), ` (${x.addr}): ${x.n.toLocaleString()} email${x.n === 1 ? '' : 's'}, ${x.why}`])))] : [])])] : []));
     foot.replaceChildren(sum, button('Close', '', () => close.click()), go);
+    rows.forEach((r, i) => { if (groups[i].newsletter && !r.warn) r.setTrash(true); });   // newsletters start chosen
     update();
 
     async function confirmDo() {
