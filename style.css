@@ -942,3 +942,9 @@ dialog.cleanup.wide .cleanup-who .cleanup-never { align-self: flex-start; margin
 .pick-own button { padding: 8px 16px; font-size: 16px; }
 .add-task.setup-cols { font-weight: 600; background: rgba(60, 170, 90, .24); }
 .add-task.setup-cols:hover { background: rgba(60, 170, 90, .36); }
+/* Custom dates sort */
+dialog.date-range h2 { margin: 0 0 12px; font-size: 20px; }
+.range-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.range-row label { flex: 1 1 160px; display: flex; flex-direction: column; gap: 6px; font-size: 16px; }
+.range-row input { font: inherit; font-size: 17px; padding: 8px 10px; border-radius: 8px; }
+.range-chip { flex: 0 0 auto; padding: 2px 10px; font-size: 13px; border-radius: 999px; white-space: nowrap; }

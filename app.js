@@ -542,7 +542,7 @@ const SORTS = [
   { key: 'oldest', label: 'Oldest first', cmp: (a, b) => sortTime(a) - sortTime(b) },
   { key: 'unread', label: 'Unread first', cmp: (a, b) => b.unread - a.unread || sortTime(b) - sortTime(a) },
   { key: 'sender', label: 'Sender A–Z', cmp: byText((t) => t.people) },
-  { key: 'subject', label: 'Subject A–Z', cmp: byText((t) => t.subject) },
+  { key: 'custom', label: 'Custom dates…', cmp: (a, b) => sortTime(b) - sortTime(a) },
 ];
 // Per-column sort, by column name, kept in this browser.
 const columnSorts = store.get('sorts', {});
@@ -558,13 +558,20 @@ function setSort(col, key) {
 
 // Which emails a column loads. Gmail only lists newest first, so a column shows its newest 100, except:
 // Oldest first walks the whole list (ids only, 500 a page, cheap) and loads the oldest 100; Unread first
-// loads unread ones first and fills up with the newest. Sender and Subject A–Z sort the loaded ones:
+// loads unread ones first and fills up with the newest. Sender A–Z sorts the loaded ones:
 // Gmail can't list by those, and loading every email to sort them would take many minutes.
 async function listColumn(col) {
   const max = col.archive ? 30 : 100;
   const label = col.inbox ? 'INBOX' : state.labelIds[col.name];
   const list = (extra = {}) => api('/threads?' + new URLSearchParams({ maxResults: String(max), labelIds: label, ...extra }));
   const key = sortOf(col).key;
+  const range = key === 'custom' && rangeOf(col);
+  if (range) {
+    const next = new Date((range.to || isoDay(new Date())) + 'T12:00');
+    next.setDate(next.getDate() + 1);                  // Gmail's before: is the day after, not including it
+    const slash = (iso) => iso.replace(/-/g, '/');
+    return list({ q: `after:${slash(range.from)} before:${slash(isoDay(next))}` });   // after: counts from that day's start
+  }
   if (key === 'oldest') {
     const all = [];
     let page = '';
@@ -591,8 +598,46 @@ function openSortMenu(anchor, col) {
   const current = sortOf(col).key;
   openMenu(anchor, [
     { heading: 'Sort' },
-    ...SORTS.map((s) => ({ label: s.label, checked: s.key === current, run: () => setSort(col, s.key) })),
+    ...SORTS.map((s) => ({ label: s.label, checked: s.key === current, run: () => (s.key === 'custom' ? pickDateRange(col) : setSort(col, s.key)) })),
   ]);
+}
+
+// Custom dates (Paul, 2026-11-12): a column shows only emails between two dates, newest first. The end date
+// starts as today; left at today it stays "today" from then on. Kept per column in this browser.
+const columnRanges = store.get('sortRanges', {});
+const isoDay = (d) => d.toLocaleDateString('en-CA');
+const rangeOf = (col) => columnRanges[col.name] || null;
+function rangeLabel(r) {
+  const day = (iso) => new Date(iso + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(iso.slice(0, 4) !== String(new Date().getFullYear()) ? { year: 'numeric' } : {}) });
+  return `${day(r.from)} – ${r.to ? day(r.to) : 'today'}`;
+}
+function pickDateRange(col) {
+  const r = rangeOf(col) || {};
+  const today = isoDay(new Date());
+  const from = el('input', { type: 'date', value: r.from || '', max: today, 'aria-label': 'Start date' });
+  const to = el('input', { type: 'date', value: r.to || today, max: today, 'aria-label': 'End date' });
+  const err = el('p', { class: 'hint' });
+  const dlg = el('dialog', { class: 'ask date-range', 'aria-label': 'Custom dates' });
+  const cancel = el('button', { type: 'button' }, 'Cancel');
+  const ok = el('button', { type: 'button', class: 'primary' }, 'Show these dates');
+  dlg.append(el('h2', {}, `Custom dates for ${col.name}`),
+    el('div', { class: 'range-row' }, [el('label', {}, ['From', from]), el('label', {}, ['To', to])]),
+    err, el('div', { class: 'ask-buttons' }, [cancel, ok]));
+  const shut = () => { dlg.close(); dlg.remove(); };
+  cancel.addEventListener('click', shut);
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); shut(); });
+  ok.addEventListener('click', () => {
+    if (!from.value) { err.textContent = 'Pick a start date.'; return; }
+    const end = to.value || today;
+    if (from.value > end) { err.textContent = 'The start date is after the end date.'; return; }
+    columnRanges[col.name] = { from: from.value, to: end === today ? '' : end };
+    store.set('sortRanges', columnRanges);
+    shut();
+    setSort(col, 'custom');
+  });
+  document.body.append(dlg);
+  dlg.showModal();
+  from.focus();
 }
 
 // ---------- nesting: an email under another email, one level deep ----------
@@ -2974,7 +3019,10 @@ function renderColumn(col, i) {
   // Tells Stediclick's magnet to aim at this button's left end, away from the column-width handle beside it.
   (closeBtn || sortBtn).classList.add('steady-aim-left');
   const taskBtn = addTaskButton(`Add a task to ${col.inbox ? GENERAL : col.name}`, () => openTaskDialog({ project: col.inbox ? GENERAL : col.name }));
-  const head = el('h2', {}, [columnCheckbox(i), el('span', { class: 'colname', title: col.name }, col.name), el('span', { class: 'count' }, ids.length + (state.more[i] ? '+' : '')),
+  const range = sortOf(col).key === 'custom' && rangeOf(col);
+  const rangeChip = range ? el('button', { type: 'button', class: 'range-chip', title: 'Change the dates' }, rangeLabel(range)) : null;
+  rangeChip?.addEventListener('click', (e) => { e.stopPropagation(); pickDateRange(col); });
+  const head = el('h2', {}, [columnCheckbox(i), el('span', { class: 'colname', title: col.name }, col.name), rangeChip, el('span', { class: 'count' }, ids.length + (state.more[i] ? '+' : '')),
     taskBtn, sortBtn, closeBtn]);
   const node = el('section', { class: 'column' + (settings.collapsedCols.includes(col.name) ? ' collapsed' + (store.get('newMailCols', []).includes(col.name) ? ' new-mail' : '') : ''), 'data-col': i }, [
     head,
