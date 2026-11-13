@@ -553,6 +553,38 @@ function setSort(col, key) {
   store.set('sorts', columnSorts);
   assign(columns());
   render();
+  loadBoard();             // and fetch the right emails for it: oldest first starts at the oldest in Gmail (Paul, 2026-11-12)
+}
+
+// Which emails a column loads. Gmail only lists newest first, so a column shows its newest 100, except:
+// Oldest first walks the whole list (ids only, 500 a page, cheap) and loads the oldest 100; Unread first
+// loads unread ones first and fills up with the newest. Sender and Subject A–Z sort the loaded ones:
+// Gmail can't list by those, and loading every email to sort them would take many minutes.
+async function listColumn(col) {
+  const max = col.archive ? 30 : 100;
+  const label = col.inbox ? 'INBOX' : state.labelIds[col.name];
+  const list = (extra = {}) => api('/threads?' + new URLSearchParams({ maxResults: String(max), labelIds: label, ...extra }));
+  const key = sortOf(col).key;
+  if (key === 'oldest') {
+    const all = [];
+    let page = '';
+    do {
+      const r = await api('/threads?' + new URLSearchParams({ maxResults: '500', labelIds: label, ...(page ? { pageToken: page } : {}) }));
+      all.push(...(r.threads || []));
+      page = r.nextPageToken || '';
+    } while (page);
+    return { threads: all.slice(-max), nextPageToken: all.length > max ? 'more' : undefined };
+  }
+  if (key === 'unread') {
+    const unread = await list({ q: 'is:unread' });
+    const got = unread.threads || [];
+    if (got.length >= max) return unread;
+    const rest = await list();
+    const seen = new Set(got.map((t) => t.id));
+    const threads = [...got, ...(rest.threads || []).filter((t) => !seen.has(t.id))].slice(0, max);
+    return { threads, nextPageToken: unread.nextPageToken || rest.nextPageToken || ((rest.threads || []).length + got.length > max ? 'more' : undefined) };
+  }
+  return list();
 }
 
 function openSortMenu(anchor, col) {
@@ -1672,13 +1704,7 @@ async function loadBoard() {
     await ensureLabels(cols);
     await wakeDueSnoozes();
     await checkReturned();
-    const lists = await Promise.all(cols.map((col) => {
-      const p = new URLSearchParams({
-        maxResults: col.archive ? '30' : '100',
-        labelIds: col.inbox ? 'INBOX' : state.labelIds[col.name],
-      });
-      return api('/threads?' + p);
-    }));
+    const lists = await Promise.all(cols.map(listColumn));
     state.more = lists.map((r) => !!r.nextPageToken);
     const listed = new Map();
     for (const t of lists.flatMap((r) => r.threads || [])) listed.set(t.id, t);
