@@ -5320,7 +5320,6 @@ const TASK_SORTS = [
   { key: 'due', label: 'Due date', cmp: (a, b) => (taskMoment(a) ?? Infinity) - (taskMoment(b) ?? Infinity) },
   { key: 'newest', label: 'Newest first', cmp: (a, b) => (b.added || 0) - (a.added || 0) },
   { key: 'oldest', label: 'Oldest first', cmp: (a, b) => (a.added || 0) - (b.added || 0) },
-  { key: 'name', label: 'Name A–Z', cmp: (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }) },
 ];
 const taskSortOf = (p, col) => TASK_SORTS.find((x) => x.key === p.sorts?.[col]) || TASK_SORTS[0];
 
