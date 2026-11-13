@@ -3846,6 +3846,23 @@ function richEditor(placeholder, changed) {
     const href = /^[a-z]+:/i.test(url) ? url : 'https://' + url;
     if (window.getSelection()?.toString()) fmt('createLink', href); else fmt('insertHTML', `<a href="${escapeHtml(href)}">${escapeHtml(url)}</a>`);
   };
+  // Signature (Paul, 2026-11-12): the one in Gmail's settings, added at the end of the message on a click.
+  // Set up or edit it here, and it's saved to Gmail, so Gmail uses the same one.
+  const putSignature = (html) => {
+    editor.querySelector('[data-signature]')?.remove();
+    editor.append(el('div', { 'data-signature': '' }));
+    const box = editor.querySelector('[data-signature]');
+    box.innerHTML = '<br>-- <br>' + cleanHtml(html);
+    changed();
+  };
+  const sigBtn = tool('Signature', 'Signature', async () => {
+    const sig = await loadSignature();
+    openMenu(sigBtn, sig ? [
+      { label: editor.querySelector('[data-signature]') ? 'Put signature back at the end' : 'Add signature', run: () => putSignature(sig) },
+      { label: 'Edit signature…', run: () => editSignature(sig, putSignature) },
+      ...(editor.querySelector('[data-signature]') ? [{ label: 'Remove signature from this message', run: () => { editor.querySelector('[data-signature]')?.remove(); changed(); } }] : []),
+    ] : [{ label: 'Set up signature…', run: () => editSignature('', putSignature) }]);
+  }, 'word');
   const formatTools = [
     tool('Bold', 'B', () => fmt('bold'), 'b'), tool('Italic', 'I', () => fmt('italic'), 'i'),
     tool('Underline', 'U', () => fmt('underline'), 'u'),
@@ -3853,6 +3870,7 @@ function richEditor(placeholder, changed) {
     el('span', { class: 'sep' }),
     tool('Attach files', 'Attach file', () => picker.click(), 'word'), tool('Insert link', 'Insert link', linkTool, 'word'),
     tool('Emoji', '😊', () => { emojiPop.hidden = !emojiPop.hidden; }),
+    sigBtn,
   ];
   return {
     editor, chips, emojiPop, picker, files, formatTools,
@@ -4376,6 +4394,55 @@ const sameMailbox = (a, b) => {
   };
   return plain(a) === plain(b);
 };
+
+// The signature in Gmail's settings (the main address). Reading it needs nothing extra; saving it needs
+// Gmail's settings permission (the same one rules use), asked for the first time.
+let signatureLoad = null;
+function loadSignature() {
+  signatureLoad ||= api('/settings/sendAs').then((r) => (r.sendAs || []).find((x) => x.isPrimary)?.signature || '').catch(() => { signatureLoad = null; return ''; });
+  return signatureLoad;
+}
+async function saveSignature(html) {
+  const { sendAs = [] } = await api('/settings/sendAs');
+  const main = sendAs.find((x) => x.isPrimary);
+  if (!main) throw new Error('No main address found');
+  const token = await scopedSignIn(filterAuth, FILTER_SCOPE);
+  const res = await fetch(`${API}/settings/sendAs/${encodeURIComponent(main.sendAsEmail)}`, { method: 'PATCH',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ signature: html }) });
+  if (!res.ok) { let msg = res.statusText; try { msg = (await res.json()).error.message; } catch {} throw new Error(msg); }
+  signatureLoad = Promise.resolve(html);
+}
+function editSignature(current, put) {
+  const box = el('div', { class: 'reply-editor sig-editor', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true',
+    'aria-label': 'Your signature', 'data-placeholder': 'Your name, phone, website…' });
+  box.innerHTML = cleanHtml(current);
+  const err = el('p', { class: 'hint' });
+  const dlg = el('dialog', { class: 'ask sig-dialog', 'aria-label': 'Signature' });
+  const cancel = el('button', { type: 'button' }, 'Cancel');
+  const save = el('button', { type: 'button', class: 'primary' }, 'Save and add');
+  dlg.append(el('h2', {}, current ? 'Edit your signature' : 'Set up your signature'), box,
+    el('p', { class: 'hint' }, 'It\u2019s saved to your Gmail settings, so Gmail uses the same signature.'), err,
+    el('div', { class: 'ask-buttons' }, [cancel, save]));
+  const shut = () => { dlg.close(); dlg.remove(); };
+  cancel.addEventListener('click', shut);
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); shut(); });
+  save.addEventListener('click', async () => {
+    const html = cleanHtml(box.innerHTML).trim();
+    save.disabled = true; save.textContent = 'Saving\u2026';
+    try {
+      await saveSignature(html);
+      shut();
+      if (html) put(html);
+      toast(html ? 'Signature saved and added' : 'Signature removed');
+    } catch (e) {
+      save.disabled = false; save.textContent = 'Save and add';
+      err.textContent = 'Could not save it: ' + e.message;
+    }
+  });
+  document.body.append(dlg);
+  dlg.showModal();
+  box.focus();
+}
 
 let ownName = null;
 function loadOwnName() {
