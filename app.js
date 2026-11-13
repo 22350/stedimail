@@ -6819,8 +6819,13 @@ const cleanupMedical = (name, addr) => CLEANUP_MEDICAL.test(`${name} ${addr}`) |
 // or from this week (Paul, 2026-11-13: "in reddit we only need to keep the last five notifications").
 // Paul, 2026-11-13: American Express, only the newest 4 (this month's and last month's statement and reminder).
 // For these senders subject words stop counting too, except tax forms, anything to sign, fraud and disputes.
-const CLEANUP_KEEP_NEWEST = [[/@(.+\.)?redditmail\.com$/i, 5], [/@(.+\.)?americanexpress\.com$/i, 4]];
+// [sender, how many newest to keep, and optionally: only if from the last N days].
+// Social media: the newest 2, and only from the last week (Paul, 2026-11-13). A sender counts as social
+// media if its address is on this list or Gmail files most of its mail under Social.
+const CLEANUP_SOCIAL = /@(.+\.)?(twitter|x|facebook|facebookmail|instagram|threads|linkedin|tiktok|pinterest|reddit|redditmail|snapchat|nextdoor|quora|tumblr|discord|discordapp|bsky|youtube|meetup|flickr|vk|telegram|whatsapp)\.(com|net|org|app|social)$/i;
+const CLEANUP_KEEP_NEWEST = [[CLEANUP_SOCIAL, 2, 7], [/@(.+\.)?americanexpress\.com$/i, 4]];
 const cleanupKeepNewest = (addr) => CLEANUP_KEEP_NEWEST.find(([re]) => re.test(addr))?.[1] || 0;
+const cleanupKeepNewestDays = (addr) => CLEANUP_KEEP_NEWEST.find(([re]) => re.test(addr))?.[2] || 0;
 // Senders whose emails carry a due date: the scan reads these emails' text, and one whose due date passed
 // more than 30 days ago can go even if its subject sounds important (Paul, 2026-11-13: Paychex).
 // One whose due date is closer, or still ahead, is kept.
@@ -7101,11 +7106,15 @@ async function cleanupRunScan(note, progress) {
     g.threads = [];
     g.recent = [];
     const keepWhy = g.keepWhy = {};                      // shown on the card (Paul, 2026-11-13)
-    const newest = cleanupKeepNewest(g.addr);
+    const social = !cleanupKeepNewest(g.addr) && g.all.filter((t) => t.labels.has('CATEGORY_SOCIAL')).length / g.all.length >= .5;
+    const newest = social ? 2 : cleanupKeepNewest(g.addr);
     const order = newest ? [...g.all].sort((a, b) => b.date - a.date) : g.all;
     g.silent = now - Math.max(...g.all.map((t) => t.date)) > CLEANUP_SILENT_DAYS * 864e5;
+    const newestDays = social ? 7 : cleanupKeepNewestDays(g.addr);
     for (const [i, t] of order.entries()) {
-      const k = i < newest ? `one of the newest ${newest}` : cleanupKeep(t, now, contacts, newest > 0, g.silent);
+      const fresh = !newestDays || now - t.date < newestDays * 864e5;
+      const k = i < newest && fresh ? `one of the newest ${newest}${newestDays ? ` from the last ${newestDays === 7 ? 'week' : newestDays + ' days'}` : ''}`
+        : cleanupKeep(t, now, contacts, newest > 0, g.silent);
       if (k) { keepWhy[k] = (keepWhy[k] || 0) + 1; g.kept.push(t); }
       else (now - t.date < CLEANUP_RECENT_DAYS * 864e5 ? g.recent : g.threads).push(t);
     }
