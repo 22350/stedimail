@@ -6594,18 +6594,18 @@ function watchForUpdates() {
 }
 
 // ---------- Guided Inbox Cleanup ----------
-// Suggests senders whose Inbox mail looks like bulk junk; nothing is touched until the user ticks a
-// sender and confirms. Each sender group goes through these steps, and each step can only make it safer:
+// Suggests senders whose Inbox mail looks like bulk junk; nothing is touched until the user chooses and
+// confirms. Rules only, no AI (Paul, 2026-11-12: the person reviews each card, so they are the check).
+// Each sender group goes through these steps, and each step can only make it safer:
 //  1. group the Inbox by sender address
-//  2. hard no: replied to, a contact or someone written to, starred, Important, on the board, nested,
-//     snoozed → the whole sender is left alone
-//  3. kept emails: newer than 7 days, other labels, attachments, or legal/money/medical/travel/security
-//     words → those emails stay; the rest of the group carries on
+//  2. hard no: replied to, a contact or someone written to, starred, on the board, nested, snoozed
+//     → the whole sender is left alone
+//  3. kept emails: Important, newer than 7 days, other labels, attachments, or legal/money/medical/travel/
+//     security words in the subject → those emails stay; the rest of the group carries on
 //  4. junk score from unsubscribe header, Gmail category, never opened, volume, age
-//  5. Chrome's built-in AI (when there is one) may only veto a group or keep emails out of it
-//  6. the user ticks groups (none ticked to start) and confirms
-// Chosen mail goes to Trash (never deleted) with a hidden label per run, so "Restore all" brings back
-// exactly that run, even later.
+//  5. a sender whose name or address sounds sensitive gets a ⚠ warning, and Trash all skips it
+//  6. the user picks Trash, Unsubscribe (also trashes) or Spam per sender, and confirms
+// Moved mail gets a hidden label per run, so "Restore all" brings back exactly that run, even later.
 const CLEANUP_PREFIX = 'Mailboard/Cleanup/';
 const CLEANUP_RECENT_DAYS = 7;
 const CLEANUP_OLD_DAYS = 90;
@@ -6721,42 +6721,6 @@ function cleanupScore(list, now) {
   return { score, why };
 }
 
-// Chrome's built-in on-device model (Gemini Nano). The browser downloads it once, a few GB, after a click.
-const CLEANUP_AI_OPTS = { expectedInputs: [{ type: 'text', languages: ['en'] }], expectedOutputs: [{ type: 'text', languages: ['en'] }] };
-const cleanupAiOn = () => store.get('cleanupAi', true);
-async function cleanupAiStatus() {
-  try { return self.LanguageModel ? await LanguageModel.availability(CLEANUP_AI_OPTS) : 'unavailable'; } catch { return 'unavailable'; }
-}
-
-// A session when the model is here and switched on, otherwise null (rules only).
-async function cleanupAi() {
-  if (!cleanupAiOn() || (await cleanupAiStatus()) !== 'available') return null;
-  try {
-    return await LanguageModel.create({ ...CLEANUP_AI_OPTS,
-      initialPrompts: [{ role: 'system', content: 'You help clear junk email. Be cautious: anything personal, '
-        + 'about money, health, legal matters, travel, accounts or security is NOT junk. When unsure, say not junk.' }],
-    });
-  } catch { return null; }
-}
-
-// Starts (or follows) the one-time download; onProgress gets 0..1.
-async function cleanupGetAi(onProgress) {
-  const s = await LanguageModel.create({ ...CLEANUP_AI_OPTS,
-    monitor(m) { m.addEventListener('downloadprogress', (e) => onProgress(e.loaded)); } });
-  s.destroy?.();
-}
-
-async function cleanupAskAi(session, g) {
-  const sample = g.threads.slice(0, 8);
-  const prompt = `Sender: ${g.name} <${g.addr}>, ${g.threads.length} emails. Subjects:\n`
-    + sample.map((t, i) => `${i + 1}. ${t.subject}`).join('\n')
-    + '\n\nIs this sender bulk junk the person can safely trash? List any subject numbers that look personal or important.';
-  const schema = { type: 'object', required: ['junk', 'keep', 'reason'], properties: {
-    junk: { type: 'boolean' }, keep: { type: 'array', items: { type: 'integer' } }, reason: { type: 'string' } } };
-  const out = JSON.parse(await session.prompt(prompt, { responseConstraint: schema }));
-  return { junk: !!out.junk, keep: (out.keep || []).map((n) => sample[n - 1]?.id).filter(Boolean), reason: String(out.reason || '').slice(0, 160) };
-}
-
 async function cleanupRunScan(note, progress) {
   const now = Date.now();
   const ids = [];
@@ -6839,28 +6803,9 @@ async function cleanupRunScan(note, progress) {
     } catch (e) { if (e instanceof AuthError) throw e; groups.splice(groups.indexOf(g), 1); skip('couldn’t check'); }
   }
 
-  const ai = await cleanupAi();
-  if (ai) {
-    n = 0;
-    for (const g of [...groups]) {
-      if (cleanup.stopped) break;
-      progress(`On-device AI is reviewing… ${++n} of ${groups.length}`);
-      try {
-        const a = await cleanupAskAi(ai, g);
-        if (!a.junk) { groups.splice(groups.indexOf(g), 1); skip('AI said keep', g); continue; }
-        const keep = new Set(a.keep);
-        g.kept.push(...g.threads.filter((t) => keep.has(t.id)));
-        g.threads = g.threads.filter((t) => !keep.has(t.id));
-        if (!g.threads.length) { groups.splice(groups.indexOf(g), 1); skip('AI said keep'); continue; }
-        if (a.reason) g.aiReason = a.reason;
-      } catch { groups.splice(groups.indexOf(g), 1); skip('AI wasn’t sure'); }
-    }
-    ai.destroy?.();
-  }
-
   groups.sort((a, b) => b.threads.length - a.threads.length);
   leftAlone.sort((a, b) => b.n - a.n);
-  return { groups, skipped, leftAlone: leftAlone.slice(0, 40), scanned: threads.length, total: ids.length, ai: !!ai, partial: cleanup.stopped };
+  return { groups, skipped, leftAlone: leftAlone.slice(0, 40), scanned: threads.length, total: ids.length, partial: cleanup.stopped };
 }
 
 async function cleanupLabel() {
@@ -7026,35 +6971,6 @@ function openCleanup() {
     };
     trashBox.append(el('span', { class: 'hint' }, 'Checking your Trash…'));
     api('/labels/TRASH').then((l) => showTrash(l.messagesTotal || 0)).catch(() => trashBox.remove());
-    const aiBox = el('div', { class: 'cleanup-ai' }, el('span', { class: 'hint' }, 'Checking for Google’s small local AI…'));
-    cleanupAiStatus().then((st) => {
-      if (st === 'available') {
-        const cb = el('input', { type: 'checkbox', ...(cleanupAiOn() ? { checked: '' } : {}) });
-        cb.addEventListener('change', () => store.set('cleanupAi', cb.checked));
-        aiBox.replaceChildren(el('label', { class: 'cleanup-ai-on' }, [cb, el('span', {}, [el('b', {}, 'Google’s small local AI is installed. '), 'Use it to double-check the list. It runs on this computer, so your emails stay here: nothing is sent to Google or anyone else.'])]));
-      } else if (st === 'downloadable' || st === 'downloading') {
-        const get = button('Get the small local AI', '', async () => {
-          get.disabled = true;
-          const bar = el('progress', { max: '1' });
-          const note = el('span', { class: 'hint' }, 'Downloading… You can close this; the browser carries on.');
-          aiBox.replaceChildren(note, bar);
-          // Chromium can say "downloadable" when the model is already here but blocked (a graphics card it
-          // won't use), and then never moves. Don't leave the bar sitting at 0%.
-          let moved = false;
-          const stuck = setTimeout(() => {
-            if (moved || !dlg.isConnected) return;
-            aiBox.replaceChildren(el('span', { class: 'hint' }, 'Your browser isn’t letting the AI run on this computer. It may already be '
-              + 'downloaded but blocked. The list works without it, using rules only.'));
-          }, 30_000);
-          try {
-            await cleanupGetAi((f) => { if (f > 0) moved = true; bar.value = f; note.textContent = `Downloading Google’s small local AI: ${Math.round(f * 100)}%`; });
-            clearTimeout(stuck);
-            if (dlg.isConnected) intro();
-          } catch (e) { clearTimeout(stuck); aiBox.replaceChildren(el('span', { class: 'hint' }, 'The AI download didn’t work: ' + e.message)); }
-        });
-        aiBox.replaceChildren(el('span', { class: 'hint' }, 'Google’s small local AI can double-check the list. It runs on this computer, so your emails stay here: nothing is sent to Google or anyone else. It’s a one-time download of a few GB.'), get);
-      } else aiBox.replaceChildren(el('span', { class: 'hint' }, 'Google’s small local AI isn’t available in this browser, so the list uses rules only.'));
-    });
     body.replaceChildren(
       el('p', {}, 'StediMail looks through your Inbox for senders whose emails look like bulk mail: ads, newsletters, alerts. '
         + 'It shows them as a list. Nothing is chosen, and nothing happens until you choose Trash, Unsubscribe or Spam and confirm.'),
@@ -7062,7 +6978,6 @@ function openCleanup() {
         + 'board, nested or snoozed mail. Emails marked Important, from the last week, with attachments, other labels, or about money, legal, '
         + 'medical, travel or account security are kept out. Chosen emails go to Trash, where Gmail keeps them 30 days, and '
         + 'each clean-up can be restored in one click.'),
-      aiBox,
       trashBox,
       ...(store.get('cleanupFreed', 0) ? [el('p', { class: 'cleanup-freed' }, `Clean-ups so far have cleared about ${bytesLabel(store.get('cleanupFreed', 0))} of junk from your Google storage (once Trash is emptied).`)] : []),
       ...(runs.length ? [el('h3', {}, 'Earlier clean-ups'), el('div', { class: 'cleanup-runs' }, runs.map((r) => {
@@ -7102,7 +7017,7 @@ function openCleanup() {
   };
 
   const results = () => {
-    const { groups, skipped, leftAlone = [], scanned, total, ai, partial } = cleanup.scan;
+    const { groups, skipped, leftAlone = [], scanned, total, partial } = cleanup.scan;
     dlg.classList.add('wide');
     dlg.querySelector('.cleanup-future')?.remove();
     // Each card has its own choices (Paul, 2026-11-12): Trash, Unsubscribe, Spam. None = left alone.
@@ -7157,7 +7072,7 @@ function openCleanup() {
           el('div', {}, [el('b', {}, g.name), ' ', el('span', { class: 'hint' }, g.addr)]),
           el('div', { class: 'cleanup-count' }, `${g.threads.length.toLocaleString()} email${g.threads.length === 1 ? '' : 's'}`
             + (g.kept.length ? ` (${g.kept.length} kept out)` : '') + ` · since ${dateLabel(oldest)}`),
-          el('div', { class: 'cleanup-why' }, g.aiReason || (g.why.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.')),
+          el('div', { class: 'cleanup-why' }, (g.why.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.')),
           ...(g.warn ? [el('div', { class: 'cleanup-warn' }, `⚠ ${g.warn} Could be important: check before choosing.`)] : []),
           el('ul', { class: 'cleanup-subjects' }, g.threads.slice(0, 3).map((t) => {
             const open = el('button', { type: 'button', class: 'cleanup-subj', title: 'Open this email' }, [el('span', {}, t.subject), el('span', { class: 'cleanup-open' }, ' Open ↗')]);
@@ -7180,8 +7095,7 @@ function openCleanup() {
       el('p', {}, groups.length
         ? `${groups.length} sender${groups.length === 1 ? '' : 's'} look like bulk mail. For each one, choose Trash, Unsubscribe or Spam, or leave it alone.`
         : 'Nothing looks like junk. Your Inbox is in good shape.'),
-      el('p', { class: 'hint' }, `Read ${scanned.toLocaleString()} of ${total.toLocaleString()} emails${partial ? ' (stopped early)' : ''}. `
-        + (ai ? 'The small local AI double-checked each sender.' : cleanupAiOn() ? 'Google’s small local AI isn’t ready, so these are rules only.' : 'The small local AI is switched off, so these are rules only.')),
+      el('p', { class: 'hint' }, `Read ${scanned.toLocaleString()} of ${total.toLocaleString()} emails${partial ? ' (stopped early)' : ''}.`),
       ...(rows.length > 1 ? [el('div', { class: 'cleanup-bulk' }, [
         // Red, and asked first: these choose without looking at each card (Paul, 2026-11-12).
         button('Trash all', 'danger', async () => {
