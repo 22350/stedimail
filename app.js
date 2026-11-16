@@ -3213,14 +3213,15 @@ function renderCard(t, colIdx) {
     cardLabelField(t, () => card),
     el('span', { class: 'card-label-link', 'aria-hidden': 'true' }, 'Label'),   // the empty field's word, drawn as a link
     el('div', { class: 'card-actions' }, [
+      // Color first, then Gmail's own order: Archive, Spam, Delete, Read/Unread, Snooze (Paul, 2026-11-16)
       iconButton('Color', 'palette', (b) => openColorPicker(b, t.id)),
-      iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, t.id)),
       iconButton('Archive', 'archive', () => forSelection(t.id, 'archive', () => archiveThread(t.id))),
       iconButton('Report spam', 'spam', () => forSelection(t.id, 'spam', () => spamThread(t.id))),
       iconButton('Delete', 'trash', () => forSelection(t.id, 'trash', () => confirmTrash(t.id))),
       t.unread
         ? iconButton('Mark as read', 'read', () => forSelection(t.id, 'read', () => toggleRead(t.id)))
         : iconButton('Mark as unread', 'unread', () => forSelection(t.id, 'unread', () => toggleRead(t.id))),
+      iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, t.id)),
     ]),
   ]);
   card.addEventListener('dragover', (e) => {
