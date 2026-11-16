@@ -335,7 +335,10 @@ a.nav-main { color: var(--text); text-decoration: none; }
   .card-label:hover + .card-label-link { color: var(--text); }
 }
 @media (hover: none) {
-  .card-actions { position: static; display: flex; justify-content: flex-end; margin-top: .3rem; }
+  /* Touch screens (iPad, phones): no hover, so the buttons show only on the card you tapped (the open or
+     selected one), not on every card (Paul's friend on an iPad, 2026-11-16) */
+  .card-actions { position: static; display: none; justify-content: flex-end; margin-top: .3rem; }
+  .card.open .card-actions, .card.selected .card-actions { display: flex; }
 }
 .icon-btn {
   width: 34px; min-height: 34px; padding: 0; display: grid; place-items: center;
