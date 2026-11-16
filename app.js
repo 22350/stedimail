@@ -5297,7 +5297,8 @@ function renderAllColumns(list) {
   const middle = [], lasts = [];
   for (const p of list) {
     const cols = taskProject(p.name).columns;
-    cols.forEach((c, i) => { const into = i === cols.length - 1 ? lasts : middle; if (!into.includes(c)) into.push(c); });
+    // a project with one column has no finished column (as isFinishedTask): its To do stays at the front (2026-11-16)
+    cols.forEach((c, i) => { const into = cols.length > 1 && i === cols.length - 1 ? lasts : middle; if (!into.includes(c)) into.push(c); });
   }
   const order = [...middle.filter((c) => !lasts.includes(c)), ...lasts];
   const names = list.map((p) => p.name);
