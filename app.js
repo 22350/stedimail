@@ -6914,7 +6914,14 @@ async function start() {
   setupCopyFloat();
   show('board');
   loadThreadCache();
-  await loadBoard();
+  // The extension's first start (nothing remembered yet) is slow: say so until the board is in (Paul, 2026-11-16).
+  const firstStart = location.protocol === 'chrome-extension:' && !state.threads.size
+    ? el('div', { class: 'first-start', role: 'status' }, [
+      el('strong', {}, 'Setting up StediMail'),
+      el('span', {}, 'The first start-up takes up to 30 seconds while your conversations load. After this it opens in a few seconds.')])
+    : null;
+  if (firstStart) document.body.append(firstStart);
+  try { await loadBoard(); } finally { firstStart?.remove(); }
 }
 
 // ---------- auto-update ----------
