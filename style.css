@@ -284,8 +284,13 @@ a.nav-main { color: var(--text); text-decoration: none; }
   height: 36px; padding: 0 .35rem; border: 1px solid transparent; background: transparent;
   font-size: .95rem; font-weight: 600; text-overflow: ellipsis; cursor: text;
 }
-/* The empty strip's "Label" reads as a link, in the Guided Inbox Cleanup green (Paul, 2026-11-16). */
-.card-label::placeholder { color: rgb(60, 170, 90); opacity: 1; font-weight: 400; text-decoration: underline; text-underline-offset: 3px; }
+/* The empty strip's "Label" reads as a link, in a muted version of the Guided Inbox Cleanup green,
+   underlined only while the mouse is on it, like the buttons (Paul, 2026-11-16). */
+.card-label::placeholder { color: #4f8a5c; opacity: 1; font-weight: 400; text-decoration: none; text-underline-offset: 3px; }
+.card-label:hover::placeholder { text-decoration: underline; }
+@media (prefers-color-scheme: dark) {
+  .card-label::placeholder { color: #7fae89; }
+}
 .card-label:focus { border-color: var(--accent); background: var(--panel); outline: none; }
 .card .card-label:focus ~ .card-actions { display: none; }
 @media (hover: hover) {
