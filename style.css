@@ -287,9 +287,10 @@ a.nav-main { color: var(--text); text-decoration: none; }
 /* The empty strip's "Label" reads as a link, in a muted version of the Guided Inbox Cleanup green,
    underlined only while the mouse is on it, like the buttons (Paul, 2026-11-16). */
 .card-label::placeholder { color: #4f8a5c; opacity: 1; font-weight: 400; text-decoration: none; text-underline-offset: 3px; }
-.card-label:hover::placeholder { text-decoration: underline; }
+.card-label:hover::placeholder { text-decoration: underline; color: #3f7a4c; }   /* a touch stronger: it does something */
 @media (prefers-color-scheme: dark) {
   .card-label::placeholder { color: #7fae89; }
+  .card-label:hover::placeholder { color: #a3cfac; }
 }
 .card-label:focus { border-color: var(--accent); background: var(--panel); outline: none; }
 .card .card-label:focus ~ .card-actions { display: none; }
