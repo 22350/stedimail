@@ -2798,6 +2798,35 @@ function saveColumnList(list, reloadAfter = 0) {
   linkStediTask();
 }
 
+// Counts a column's emails for the remove-column question: those still in the Inbox go back to the
+// Inbox column; archived ones leave the board but keep the label in Gmail.
+async function countThreads(labelIds) {
+  let n = 0, page = '';
+  do {
+    const p = new URLSearchParams({ maxResults: '500' });
+    labelIds.forEach((l) => p.append('labelIds', l));
+    if (page) p.set('pageToken', page);
+    const r = await api('/threads?' + p);
+    n += (r.threads || []).length;
+    page = r.nextPageToken || '';
+  } while (page);
+  return n;
+}
+const emailsWord = (n) => `${n} email${n === 1 ? '' : 's'}`;
+async function removeColumnMessage(name, id) {
+  const ask = `Remove the “${name}” column?`;
+  if (!id) return `${ask}\n\nIt has no emails.`;
+  let total, inInbox;
+  try { [total, inInbox] = await Promise.all([countThreads([id]), countThreads([id, 'INBOX'])]); }
+  catch { return `${ask}\n\nIts emails will go back to the Inbox.`; }
+  if (!total) return `${ask}\n\nIt has no emails.`;
+  const archived = total - inInbox;
+  const lines = [];
+  if (inInbox) lines.push(`${emailsWord(inInbox)} will go back to the Inbox.`);
+  if (archived) lines.push(`${emailsWord(archived)} ${archived === 1 ? 'is' : 'are'} archived, so ${archived === 1 ? 'it' : 'they'} will leave the board but stay in Gmail.`);
+  return `${ask}\n\n${lines.join(' ')}`;
+}
+
 async function removeColumn(i, afterDelete = false, { askTasks = true } = {}) {
   const before = [...settings.columns];
   const name = before[i - 1];
@@ -2806,7 +2835,8 @@ async function removeColumn(i, afterDelete = false, { askTasks = true } = {}) {
   const own = isOwnLabel(name);
   const beforeLabels = { ...settings.columnLabels };
   // Every delete asks first (Paul, 2026-11-08); emptying a column into Trash already asked.
-  if (!afterDelete && askTasks && !await askConfirm(`Remove the “${name}” column?\n\nIts emails stay in Gmail.`, 'Remove column')) return;
+  // The question says how many emails are affected and where they go (Paul, 2026-11-16).
+  if (!afterDelete && askTasks && !await askConfirm(await removeColumnMessage(name, id), 'Remove column')) return;
   const undoTasks = askTasks ? await askRemoveTaskProject(name) : null;
   const undo = () => { settings.columnLabels = beforeLabels; saveColumnList(before); undoTasks?.(); };
   const after = before.filter((_, k) => k !== i - 1);
