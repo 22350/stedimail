@@ -5272,7 +5272,7 @@ function renderTasks(force = false) {
   box.replaceChildren(tabs, body);
   box.querySelectorAll('.cards').forEach((c, i) => { c.scrollTop = scrolls[i] || 0; });
   const gantt = box.querySelector('.gantt');
-  if (gantt) gantt.scrollLeft = ganttScroll ?? Math.max(0, Number(gantt.dataset.today) - 320);
+  if (gantt) { ganttDayNames(gantt); gantt.scrollLeft = ganttScroll ?? Math.max(0, Number(gantt.dataset.today) - 320); }
   // only when the same board is redrawn; switching project or view just shows the new one
   if (before?.key === store.get('taskView', 'board') + '|' + store.get('taskProject', '')) animateTaskBoard(box, before);
 }
@@ -5351,8 +5351,88 @@ function renderAllColumns(list) {
 
 // Timeline, like the StediTask window's: weeks across the top, a line for today, a bar per task from its start
 // (or the day it was added) to its due date, grouped by project. Click a task to edit it.
+// The week columns resize like the mail columns (Paul, 2026-11-16): drag a week line in the header and every
+// week gets that width; double-click one for the usual width. Positions are in days times --gw (one day's
+// width), so a drag only changes that one number and nothing is redrawn.
+const GANTT_DAY_W = 30, GANTT_DAY_MIN = 15, GANTT_DAY_MAX = 60;
+const ganttDayW = () => Math.min(GANTT_DAY_MAX, Math.max(GANTT_DAY_MIN, Number(store.get('ganttDayW', GANTT_DAY_W)) || GANTT_DAY_W));
+function ganttResizeHandle(i) {
+  const h = el('div', { class: 'gweek-resize', style: `left:calc(${i} * var(--gw))`, title: 'Drag to resize all weeks · double-click for the usual width' });
+  h.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const gantt = h.closest('.gantt');
+    const startX = e.clientX, startW = ganttDayW();
+    let w = startW;
+    h.setPointerCapture(e.pointerId);
+    document.body.classList.add('col-resizing');
+    const move = (ev) => {
+      w = Math.round(Math.min(GANTT_DAY_MAX, Math.max(GANTT_DAY_MIN, (i * startW + ev.clientX - startX) / i)) * 10) / 10;
+      gantt.style.setProperty('--gw', w + 'px');
+      ganttDayNames(gantt);
+    };
+    let ended = false;
+    const up = () => {
+      if (ended) return;
+      ended = true;
+      h.removeEventListener('pointermove', move);
+      document.body.classList.remove('col-resizing');
+      store.set('ganttDayW', w);
+    };
+    h.addEventListener('pointermove', move);
+    h.addEventListener('pointerup', up, { once: true });
+    h.addEventListener('lostpointercapture', up, { once: true });   // also when the Timeline is redrawn mid-drag
+  });
+  h.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    store.set('ganttDayW', GANTT_DAY_W);
+    const gantt = h.closest('.gantt');
+    gantt?.style.setProperty('--gw', GANTT_DAY_W + 'px');
+    if (gantt) ganttDayNames(gantt);
+  });
+  return h;
+}
+// Hovering a task's bar shows its start date, today and its end (due) date (Paul, 2026-11-16).
+let ganttTipNode = null;
+function ganttTip(bar, t, startIso, todayIso, late) {
+  const row = (name, value, cls = '') => el('div', { class: 'gtip-row ' + cls }, [el('span', { class: 'gtip-name' }, name), el('span', {}, value)]);
+  const show = (e) => {
+    if (!ganttTipNode) { ganttTipNode = el('div', { class: 'gantt-tip', role: 'tooltip' }); document.body.append(ganttTipNode); }
+    ganttTipNode.replaceChildren(
+      el('div', { class: 'gtip-title' }, t.title),
+      row('Start', dueText(startIso)),
+      row('Today', dueText(todayIso), 'gtip-today'),
+      row('End', t.due ? dueText(t.due) : 'No due date', late ? 'gtip-late' : ''));
+    ganttTipNode.hidden = false;
+    place(e);
+  };
+  const place = (e) => {
+    if (!ganttTipNode || ganttTipNode.hidden) return;
+    const w = ganttTipNode.offsetWidth, h = ganttTipNode.offsetHeight;
+    let x = e.clientX + 14, y = e.clientY + 18;
+    if (x + w > innerWidth - 8) x = e.clientX - w - 14;
+    if (y + h > innerHeight - 8) y = e.clientY - h - 12;
+    ganttTipNode.style.left = Math.max(8, x) + 'px';
+    ganttTipNode.style.top = Math.max(8, y) + 'px';
+  };
+  bar.addEventListener('pointerenter', show);
+  bar.addEventListener('pointermove', place);
+  bar.addEventListener('pointerleave', () => { if (ganttTipNode) ganttTipNode.hidden = true; });
+  bar.addEventListener('click', () => { if (ganttTipNode) ganttTipNode.hidden = true; });
+}
+
+// The days show when a week is more than twice as wide as its date (the widest one) (Paul, 2026-11-16).
+function ganttDayNames(gantt) {
+  const dates = [...gantt.querySelectorAll('.ghead .gweek')];
+  if (!dates.length) return;
+  const range = document.createRange();
+  const widest = Math.max(...dates.map((d) => { range.selectNodeContents(d); return range.getBoundingClientRect().width; }));
+  const week = 7 * parseFloat(getComputedStyle(gantt).getPropertyValue('--gw'));
+  gantt.classList.toggle('show-days', widest > 0 && week > 2 * widest);
+}
+
 function renderTimeline(projects, list) {
-  const DAY = 864e5, W = 30;
+  const DAY = 864e5, W = ganttDayW();
+  const px = (n) => `calc(${n} * var(--gw))`;   // n days
   const iso = (ms) => new Date(ms).toLocaleDateString('en-CA');
   const at = (s) => new Date(s + 'T00:00').getTime();
   const addDays = (ms, n) => { const d = new Date(ms); d.setDate(d.getDate() + n); return d.getTime(); };   // calendar days, so a clock change doesn't shift them
@@ -5364,33 +5444,39 @@ function renderTimeline(projects, list) {
   const first = Math.min(addDays(today, -7), ...items.map((t) => at(startOf(t))));
   const start = addDays(first, -((new Date(first).getDay() + 6) % 7));   // a Monday
   const last = Math.max(addDays(today, 56), ...items.map((t) => at(endOf(t))));
-  const days = Math.round((last - start) / DAY) + 7, width = days * W;
-  const x = (s) => Math.round((at(s) - start) / DAY) * W;
+  const days = Math.round((last - start) / DAY) + 7, width = px(days);
+  const dayOf = (s) => Math.round((at(s) - start) / DAY);
+  const x = (s) => dayOf(s) * W;
   const weeks = [];
   for (let i = 0; i < days; i += 7) weeks.push(i);
-  const grid = () => weeks.map((i) => el('div', { class: 'gday', style: `left:${i * W}px` }));
-  const track = (kids) => el('div', { class: 'gtrack', style: `width:${width}px` }, [...grid(), el('div', { class: 'gtoday', style: `left:${x(todayIso)}px`, title: 'Today' }), ...kids]);
+  const grid = () => weeks.map((i) => el('div', { class: 'gday', style: `left:${px(i)}` }));
+  const track = (kids) => el('div', { class: 'gtrack', style: `width:${width}` }, [...grid(), el('div', { class: 'gtoday', style: `left:${px(dayOf(todayIso))}`, title: 'Today' }), ...kids]);
   const rows = [el('div', { class: 'grow ghead' }, [el('div', { class: 'glabel' }, 'Pending'),
-    el('div', { class: 'gtrack', style: `width:${width}px` }, [...grid(), ...weeks.map((i) => el('div', { class: 'gweek', style: `left:${i * W}px` },
-      new Date(addDays(start, i)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })))])])];
+    el('div', { class: 'gtrack', style: `width:${width}` }, [...grid(), ...weeks.map((i) => el('div', { class: 'gweek', style: `left:${px(i)}` },
+      new Date(addDays(start, i)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))),
+    // a tick and a short day name for every day, shown once the weeks are wide enough (Paul, 2026-11-16)
+    ...Array.from({ length: days }, (_, n) => el('div', { class: 'gdayname', style: `left:${px(n)}` },
+      new Date(addDays(start, n)).toLocaleDateString(undefined, { weekday: 'short' }))),
+    ...weeks.filter((i) => i > 0).map(ganttResizeHandle), ganttResizeHandle(days)])])];
   let rowN = 0;   // alternate across the whole list, first row grey (Paul, 2026-11-09)
   for (const p of projects) {
     const tasksIn = items.filter((t) => t.project === p.name).sort((a, b) => startOf(a).localeCompare(startOf(b)));
     if (!tasksIn.length) continue;
     const pc = projectColor(p.name, list);
     for (const [i, t] of tasksIn.entries()) {
-      const a = x(startOf(t)), b = x(endOf(t)) + W;
+      const a = dayOf(startOf(t)), b = dayOf(endOf(t)) + 1;
       const done = isFinishedTask(t), late = !done && t.due && t.due < todayIso;
       const label = `${t.title}: ${dueText(startOf(t))}${t.due ? ' to ' + dueText(t.due) : ', no due date'}${late ? ', late' : ''}${done ? ', finished' : ''}`;
       const name = el('button', { type: 'button', class: 'gname' }, t.title);
       const bar = el('button', { type: 'button', class: 'gbar' + (done ? ' done' : '') + (late ? ' late' : '') + (t.due ? '' : ' nodue'),
-        style: `left:${a}px;width:${Math.max(b - a, W)}px`, title: label, 'aria-label': label });
+        style: `left:${px(a)};width:${px(Math.max(b - a, 1))}`, 'aria-label': label });
       for (const n of [name, bar]) n.addEventListener('click', () => editTask(t.id));
+      ganttTip(bar, t, startOf(t), todayIso, late);
       rows.push(el('div', { class: 'grow' + (rowN++ % 2 ? '' : ' galt'), style: `--pc:${pc}` }, [el('div', { class: 'glabel' }, name), track([bar])]));
     }
   }
   if (rows.length === 1) rows.push(el('p', { class: 'hint task-empty' }, 'No tasks here yet.'));
-  return el('div', { class: 'gantt', 'data-today': String(x(todayIso)) }, rows);
+  return el('div', { class: 'gantt', 'data-today': String(x(todayIso)), style: `--gw:${W}px` }, rows);
 }
 
 const TAB_COLORS = ['#3b82c4', '#9b59b6', '#c8643f', '#2a9d8f', '#b8860b', '#5d8f2f', '#c2417a', '#4b6bd6'];

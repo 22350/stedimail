@@ -785,18 +785,36 @@ body.tasks-on .task-search-box { display: block; }
 /* outlined, a bit taller, dates twice the size (Paul, 2026-11-09) */
 .gantt .ghead { min-height: 56px; }
 /* outline removed (Paul, 2026-11-09) */
-.gantt .ghead .gweek { top: auto; bottom: 12px; line-height: 1; padding-left: 12px; font-size: 1.625rem; color: #fff; }
+.gantt .ghead .gweek { top: auto; bottom: 18px; line-height: 1; padding-left: 12px; font-size: 1.625rem; color: #fff; }
 .gantt .gproj, .gantt .gproj .glabel { background: color-mix(in srgb, var(--pc) 12%, var(--panel)); }
 .gantt .gproj .glabel { color: var(--pc); }
 /* every other task row a lighter gray, so a name is easy to follow across to its bar (Paul, 2026-11-09) */
 .gantt .grow.galt, .gantt .grow.galt .glabel { background: color-mix(in srgb, #fff 6%, var(--panel)); }
 .gantt .gtrack { position: relative; }
+/* more room under the dates (Paul, 2026-11-16); with the days showing, the header grows to fit them under the dates */
+.gantt .ghead { min-height: 62px; }
+.gantt.show-days .ghead { min-height: 80px; }
+.gantt.show-days .ghead .gweek { bottom: 30px; }
+.gantt .gdayname { display: none; position: absolute; bottom: 0; height: 18px; padding: 0 0 4px 4px; border-left: 1px solid #555;
+  font-size: .7rem; line-height: 14px; color: #bbb; white-space: nowrap; pointer-events: none; }
+.gantt.show-days .gdayname { display: block; }
+.gantt .gweek-resize { position: absolute; top: 0; bottom: 0; width: 14px; margin-left: -7px; z-index: 3; cursor: ew-resize; touch-action: none; opacity: 0; transition: opacity .15s; }
+.gantt .gweek-resize::after { content: ''; position: absolute; bottom: 10px; height: 22px; left: 5px; width: 4px; border-radius: 2px; background: var(--accent); }
+.gantt .ghead:hover .gweek-resize, .gantt .gweek-resize:active { opacity: .8; }
 .gantt .gday { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--border); }
 .gantt .gweek { position: absolute; top: 10px; font-size: .8rem; color: var(--muted); white-space: nowrap; padding-left: 4px; }
 .gantt .gtoday { position: absolute; top: 0; bottom: 0; border-left: 2px solid #3fbf7f; z-index: 1; }
 .gantt .gbar { position: absolute; top: 7px; height: 24px; min-height: 0; border-radius: 6px; background: var(--pc); border: 0; padding: 0; cursor: pointer; }
 .gantt .gbar.done { opacity: .35; }
 .gantt .gbar.late { box-shadow: 0 0 0 2px #d9534f; }
+.gantt-tip { position: fixed; z-index: 50; pointer-events: none; background: #000; color: #fff; border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.45); font-size: 1rem; min-width: 190px; }
+.gantt-tip[hidden] { display: none; }
+.gantt-tip .gtip-title { font-weight: 700; margin-bottom: 6px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gantt-tip .gtip-row { display: flex; justify-content: space-between; gap: 18px; line-height: 1.5; }
+.gantt-tip .gtip-name { color: #bbb; }
+.gantt-tip .gtip-today { color: #3fbf7f; }
+.gantt-tip .gtip-late { color: #ff6b66; }
 .gantt .gbar.nodue { background: repeating-linear-gradient(45deg, var(--pc), var(--pc) 6px, transparent 6px, transparent 11px); border: 2px solid var(--pc); }
 /* Undo is a square icon button in StediMail and StediTask; in StediTask a red Redo button appears beside it
    after an undo (Paul, 2026-11-08) */
