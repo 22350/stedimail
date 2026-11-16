@@ -621,9 +621,9 @@ dialog.ask p.hint { font-size: 15px; opacity: .8; }
 .ask-buttons button.save-to:has(.save-line ~ .save-line) .save-head { margin-bottom: 6px; }
 .ask-buttons button.save-to .save-where { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .ask-buttons button.save-to .save-line { display: block; line-height: .82; font-size: 1.2em; }
-/* spaced out so each is 20% wider than SAVE TO: (measured; Paul, 2026-11-16) */
-.ask-buttons button.save-to .save-line[data-line="Task Board"] { letter-spacing: .015em; }
-.ask-buttons button.save-to .save-line[data-line="Mail Board"] { letter-spacing: .036em; }
+/* spaced out, the two the same width (measured; Paul, 2026-11-16) */
+.ask-buttons button.save-to .save-line[data-line="Task Board"] { letter-spacing: .045em; }
+.ask-buttons button.save-to .save-line[data-line="Mail Board"] { letter-spacing: .066em; }
 .ask-buttons button.save-to .save-line[data-line="+"] { margin: 3px 0; }
 button.danger { background: #c0392b; border-color: #c0392b; color: #fff; }
 button.danger:disabled { opacity: .45; cursor: default; }
