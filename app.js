@@ -3211,6 +3211,7 @@ function renderCard(t, colIdx) {
     t.attachments ? el('div', { class: 'clip' }, [icon('clip'), String(t.attachments)]) : null,
     snoozedLabelOf(t) ? el('div', { class: 'snoozed' }, [icon('clock'), 'Back ' + whenLabel(snoozedLabelOf(t).due)]) : null,
     cardLabelField(t, () => card),
+    el('span', { class: 'card-label-link', 'aria-hidden': 'true' }, 'Label'),   // the empty field's word, drawn as a link
     el('div', { class: 'card-actions' }, [
       iconButton('Color', 'palette', (b) => openColorPicker(b, t.id)),
       iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, t.id)),

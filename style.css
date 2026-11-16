@@ -297,6 +297,17 @@ a.nav-main { color: var(--text); text-decoration: none; }
   .card-label { position: absolute; top: .15rem; left: .5rem; width: calc(100% - .7rem); }
   .card-label:placeholder-shown { display: none; }
   .card:hover .card-label, .card .card-label:focus { display: block; }   /* stays open while typing, wherever the mouse goes */
+  /* Chrome won't underline placeholder text, so the empty field's "Label" is a real word laid over it,
+     underlined like a link (Paul, 2026-11-16). Clicks pass through to the field. */
+  .card-label::placeholder { color: transparent; }
+  .card-label-link { display: none; position: absolute; top: .15rem; left: calc(.5rem + 1px + .35rem);
+    line-height: 36px; font-size: .95rem; color: #4f8a5c; text-decoration: underline; text-underline-offset: 3px;
+    pointer-events: none; }
+  .card:hover .card-label:placeholder-shown:not(:focus) + .card-label-link { display: block; }
+}
+.card-label-link { display: none; }
+@media (hover: hover) and (prefers-color-scheme: dark) {
+  .card-label-link { color: #7fae89; }
 }
 @media (hover: none) {
   .card-actions { position: static; display: flex; justify-content: flex-end; margin-top: .3rem; }
