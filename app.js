@@ -1769,6 +1769,7 @@ async function loadBoard() {
     await ensureLabels(cols);
     await wakeDueSnoozes();
     await checkReturned();
+    await spamUnsubBounces();
     const lists = await Promise.all(cols.map(listColumn));
     state.more = lists.map((r) => !!r.nextPageToken);
     const listed = new Map();
@@ -4204,6 +4205,55 @@ function postOneClick(url) {
   form.submit();
   form.remove();
 }
+// A bounce ("Undeliverable", "Delivery Status Notification") of an unsubscribe email we sent goes straight to
+// Spam (Paul, 2026-11-16). Gmail puts a bounce in the same thread as the email it bounced, so: an Inbox thread
+// with a message from the mail system, where the email sent was an unsubscribe request (a thread we sent one in
+// from here, or a subject that says unsubscribe). Checked on every load; quiet apart from a toast with Undo.
+function rememberUnsubSent(r) {
+  if (!r?.threadId) return;
+  store.set('unsubSent', [r.threadId, ...store.get('unsubSent', []).filter((x) => x !== r.threadId)].slice(0, 300));
+}
+const BOUNCE_FROM = /mailer-daemon|postmaster|mail delivery (subsystem|system)|microsoftexchange/i;
+const bounceChecked = new Set();   // threads already looked at this session
+async function spamUnsubBounces() {
+  let list;
+  try {
+    list = await api('/threads?' + new URLSearchParams({ maxResults: '50', labelIds: 'INBOX',
+      q: 'from:(mailer-daemon OR postmaster) OR subject:(undeliverable OR "delivery status notification" OR "mail delivery failed" OR "returned mail")' }));
+  } catch (e) { if (e instanceof AuthError) throw e; return; }
+  const sentIn = new Set(store.get('unsubSent', []));
+  const moved = [];
+  for (const { id } of list.threads || []) {
+    if (bounceChecked.has(id)) continue;
+    bounceChecked.add(id);
+    let th;
+    try { th = await api(`/threads/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`); } catch { continue; }
+    const msgs = th.messages || [];
+    const bounce = msgs.find((m) => BOUNCE_FROM.test(header(m, 'from'))
+      || /undeliverable|delivery status notification|mail delivery failed|returned mail|delivery failure/i.test(header(m, 'subject')));
+    if (!bounce) continue;
+    const ours = sentIn.has(id)
+      || msgs.some((m) => (m.labelIds || []).includes('SENT') && /unsubscri/i.test(header(m, 'subject')))
+      || /unsubscri/i.test(header(bounce, 'subject'));   // "Undeliverable: unsubscribe", in a thread of its own
+    if (!ours) continue;
+    try {
+      await api(`/threads/${id}/modify`, { method: 'POST', body: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] } });
+      moved.push(id);
+      state.threads.delete(id);
+    } catch (e) { if (e instanceof AuthError) throw e; }
+  }
+  if (!moved.length) return;
+  toast(`${moved.length === 1 ? 'A bounced unsubscribe email' : moved.length + ' bounced unsubscribe emails'} went to Spam`, {
+    label: 'Undo',
+    run: async () => {
+      for (const id of moved) {
+        try { await api(`/threads/${id}/modify`, { method: 'POST', body: { removeLabelIds: ['SPAM'], addLabelIds: ['INBOX'] } }); } catch {}
+      }
+      loadBoard();
+    },
+  });
+}
+
 function unsubscribedOn() {
   return store.get('unsubscribed', {});
 }
@@ -4224,7 +4274,7 @@ function renderUnsubscribe(msgs, threadId) {
       } else if (u.mail) {
         const url = new URL(u.mail);
         const to = decodeURIComponent(url.pathname);
-        await sendMail({ To: to, Subject: url.searchParams.get('subject') || 'unsubscribe' }, url.searchParams.get('body') || 'unsubscribe');
+        rememberUnsubSent(await sendMail({ To: to, Subject: url.searchParams.get('subject') || 'unsubscribe' }, url.searchParams.get('body') || 'unsubscribe'));
         done = `Unsubscribe email sent to ${name} from your Gmail.`;
       } else {
         window.open(u.web, '_blank', 'noopener');
@@ -5444,7 +5494,7 @@ function renderTimeline(projects, list) {
   const first = Math.min(addDays(today, -7), ...items.map((t) => at(startOf(t))));
   const start = addDays(first, -((new Date(first).getDay() + 6) % 7));   // a Monday
   const last = Math.max(addDays(today, 56), ...items.map((t) => at(endOf(t))));
-  const days = Math.round((last - start) / DAY) + 7, width = px(days);
+  const days = Math.ceil((Math.round((last - start) / DAY) + 7) / 7) * 7, width = px(days);   // whole weeks, so the last date isn't cut off
   const dayOf = (s) => Math.round((at(s) - start) / DAY);
   const x = (s) => dayOf(s) * W;
   const weeks = [];
@@ -7377,7 +7427,7 @@ async function cleanupUnsubscribe(groups) {
     if (u?.mail) {
       try {
         const url = new URL(u.mail);
-        await sendMail({ To: decodeURIComponent(url.pathname), Subject: url.searchParams.get('subject') || 'unsubscribe' }, url.searchParams.get('body') || 'unsubscribe');
+        rememberUnsubSent(await sendMail({ To: decodeURIComponent(url.pathname), Subject: url.searchParams.get('subject') || 'unsubscribe' }, url.searchParams.get('body') || 'unsubscribe'));
         sent.push(g);
         asked[g.addr] = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       } catch (e) { if (e instanceof AuthError) throw e; if (u.web) web.push({ g, u }); else none.push(g); }

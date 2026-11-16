@@ -791,6 +791,8 @@ body.tasks-on .task-search-box { display: block; }
 /* every other task row a lighter gray, so a name is easy to follow across to its bar (Paul, 2026-11-09) */
 .gantt .grow.galt, .gantt .grow.galt .glabel { background: color-mix(in srgb, #fff 6%, var(--panel)); }
 .gantt .gtrack { position: relative; }
+/* every row as wide as the whole timeline, so the stripes, black lines and black header reach its end (Paul, 2026-11-16) */
+.gantt .grow { width: max-content; min-width: 100%; }
 /* more room under the dates (Paul, 2026-11-16); with the days showing, the header grows to fit them under the dates */
 .gantt .ghead { min-height: 62px; }
 .gantt.show-days .ghead { min-height: 80px; }
