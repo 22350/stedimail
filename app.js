@@ -5879,7 +5879,11 @@ function openTaskDialog(opts = {}) {
   const cancel = el('button', { type: 'button' }, 'Cancel');
   const save = el('button', { type: 'button', class: 'primary' }, editing ? 'Save' : 'Add task');
   // Adding: two buttons, so where it goes is always asked (Paul, 2026-11-08). It's always on the task board.
-  const saveBoard = editing ? null : el('button', { type: 'button' }, 'Add to task board only');
+  // Each Add button is a stack, centred: "Save to:" on top, then where it goes (Paul, 2026-11-16).
+  // SAVE ON sits at the top of both buttons; where it goes is centred below it (Paul, 2026-11-16).
+  const saveToLines = (...where) => [el('span', { class: 'save-head' }, 'Save on'),
+    el('span', { class: 'save-where' }, where.map((t) => el('span', { class: 'save-line', 'data-line': t }, t)))];
+  const saveBoard = editing ? null : el('button', { type: 'button', class: 'save-to' }, saveToLines('Task Board'));
   let boardOnly = false;
   saveBoard?.addEventListener('click', () => { boardOnly = true; save.click(); boardOnly = false; });
   const msg = el('p', { class: 'error', role: 'alert' });
@@ -5960,7 +5964,8 @@ function openTaskDialog(opts = {}) {
     if (editing) { inMailRow.hidden = !mail; return; }
     inMailRow.hidden = true;   // the two Add buttons say it instead
     saveBoard.hidden = !mail;
-    save.textContent = mail ? 'Add to task board + mail column' : 'Add task';
+    save.classList.add('save-to');
+    save.replaceChildren(...(mail ? saveToLines('Task Board', '+', 'Mail Board') : saveToLines('Task Board')));
     if (mail) inMailBox.checked = true;
   };
   project?.addEventListener('change', syncMailRow);
