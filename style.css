@@ -221,6 +221,12 @@ a.nav-main { color: var(--text); text-decoration: none; }
 .card .clip { display: flex; align-items: center; gap: .2rem; margin-top: .3rem; color: var(--muted); font-size: .8rem; }
 .card .clip svg { width: 14px; height: 14px; fill: currentColor; }
 .card.unread .people, .card.unread .subj { font-weight: 700; }
+/* A read email's card is grayed down, like Gmail's read rows; unread ones stay white (Paul, 2026-11-16). */
+.card:not(.unread):not(.task-card):not(.selected) { background: var(--col); box-shadow: none; }
+.card:not(.unread):not(.task-card) .people, .card:not(.unread):not(.task-card) .subj { color: var(--muted); }
+.card:not(.unread):not(.task-card):not(.selected) .card-actions { background: var(--col); }
+/* and its text a little dimmer, 95% (Paul, 2026-11-16); the hover buttons stay full strength */
+.card:not(.unread):not(.task-card) > :not(.card-actions) { opacity: .95; }
 .card.colored { border-left: 6px solid var(--card-color); }
 .pick { width: 18px; height: 18px; margin: 0; flex: none; cursor: pointer; accent-color: var(--accent); align-self: center; }
 .card .pick { display: none; }

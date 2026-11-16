@@ -3248,9 +3248,8 @@ function renderCard(t, colIdx) {
       iconButton('Archive', 'archive', () => forSelection(t.id, 'archive', () => archiveThread(t.id))),
       iconButton('Report spam', 'spam', () => forSelection(t.id, 'spam', () => spamThread(t.id))),
       iconButton('Delete', 'trash', () => forSelection(t.id, 'trash', () => confirmTrash(t.id))),
-      t.unread
-        ? iconButton('Mark as read', 'read', () => forSelection(t.id, 'read', () => toggleRead(t.id)))
-        : iconButton('Mark as unread', 'unread', () => forSelection(t.id, 'unread', () => toggleRead(t.id))),
+      // Always "Mark as unread" with the envelope-and-dot icon, even on unread emails (Paul, 2026-11-16).
+      iconButton('Mark as unread', 'unread', () => forSelection(t.id, 'unread', () => { if (!t.unread) toggleRead(t.id); })),
       iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, t.id)),
     ]),
   ]);
