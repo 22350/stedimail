@@ -284,10 +284,8 @@ a.nav-main { color: var(--text); text-decoration: none; }
   height: 36px; padding: 0 .35rem; border: 1px solid transparent; background: transparent;
   font-size: .95rem; font-weight: 600; text-overflow: ellipsis; cursor: text;
 }
-.card-label::placeholder { color: rgba(0, 0, 0, .5); font-weight: 400; }
-@media (prefers-color-scheme: dark) {
-  .card-label::placeholder { color: rgba(255, 255, 255, .5); }
-}
+/* The empty strip's "Label" reads as a link, in the Guided Inbox Cleanup green (Paul, 2026-11-16). */
+.card-label::placeholder { color: rgb(60, 170, 90); opacity: 1; font-weight: 400; text-decoration: underline; text-underline-offset: 3px; }
 .card-label:focus { border-color: var(--accent); background: var(--panel); outline: none; }
 .card .card-label:focus ~ .card-actions { display: none; }
 @media (hover: hover) {
