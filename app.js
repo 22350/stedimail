@@ -3090,6 +3090,7 @@ function renderColumn(col, i) {
     }
     e.preventDefault();
     node.classList.add('drop');
+    placeMailGap(node.querySelector('.cards'), sort);
   });
   node.addEventListener('dragleave', (e) => { if (!node.contains(e.relatedTarget)) clearMarks(); });
   node.addEventListener('drop', (e) => {
@@ -3109,6 +3110,35 @@ function renderColumn(col, i) {
     else moveWithUndo(id, i);
   });
   return node;
+}
+
+// The gap where a dragged email will land (Paul, 2026-11-16). Mail columns keep their sort order (newest
+// first and so on), so the gap opens where the email's date puts it in the column under the pointer, not
+// where the pointer is: you see where it ends up before letting go.
+const mailDrag = { card: null, ph: el('div', { class: 'task-ph mail-ph', 'aria-hidden': 'true' }) };
+function placeMailGap(cardsBox, sort) {
+  const t = state.threads.get(state.dragId);
+  if (!mailDrag.card || !t || !cardsBox) return;
+  const ph = mailDrag.ph;
+  const cards = [...cardsBox.querySelectorAll('.card[data-id]')].filter((c) => c !== mailDrag.card);
+  // before the first email (not one nested under another) that sorts after the dragged one, else after the last
+  const next = cards.find((c) => {
+    if (c.classList.contains('nested')) return false;
+    const o = state.threads.get(c.dataset.id);
+    return o && sort.cmp(t, o) < 0;
+  });
+  const anchor = next || (cards.length ? cards[cards.length - 1].nextElementSibling : cardsBox.firstElementChild);
+  const skip = (n) => { while (n && (n === mailDrag.card || n === ph)) n = n.nextElementSibling; return n; };
+  if (ph.parentElement === cardsBox && skip(ph.nextElementSibling) === skip(anchor)) return;   // already there
+  const from = ph.parentElement;
+  slideCards([from, from === cardsBox ? null : cardsBox], () => cardsBox.insertBefore(ph, anchor === ph ? ph.nextElementSibling : anchor), '.card');
+}
+function endMailDrag() {
+  const card = mailDrag.card;
+  if (!card) return;
+  mailDrag.card = null;
+  mailDrag.ph.remove();
+  card.style.display = '';
 }
 
 function renderCard(t, colIdx) {
@@ -3188,8 +3218,13 @@ function renderCard(t, colIdx) {
     e.dataTransfer.effectAllowed = 'move';
     dragGhost.start(e);
     card.classList.add('dragging');
+    if (colIdx < 0) return;   // a search result: no gap
+    mailDrag.card = card;
+    mailDrag.ph.style.height = card.offsetHeight + 'px';
+    // after the browser has taken its picture of the card: fold it away, leaving the gap in its place
+    setTimeout(() => { if (mailDrag.card === card) { card.before(mailDrag.ph); card.style.display = 'none'; } });
   });
-  card.addEventListener('dragend', () => { state.dragging = false; state.dragId = null; clearNestTarget(); card.classList.remove('dragging'); });
+  card.addEventListener('dragend', () => { state.dragging = false; state.dragId = null; clearNestTarget(); card.classList.remove('dragging'); endMailDrag(); });
   card.addEventListener('click', () => openThread(t.id));
   return card;
 }
@@ -5137,9 +5172,9 @@ function taskMatches(t) {
 // While a card is dragged on one project's board, the other cards slide apart to open a gap where it will land
 // (Paul, 2026-11-09). The card itself is folded away; the gap shows where it is going.
 const taskDrag = { id: null, card: null, ph: el('div', { class: 'task-ph', 'aria-hidden': 'true' }) };
-function slideCards(scopes, change) {
+function slideCards(scopes, change, sel = '.task-card') {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const cards = scopes.flatMap((s) => (s ? [...s.querySelectorAll('.task-card')] : []));
+  const cards = scopes.flatMap((s) => (s ? [...s.querySelectorAll(sel)] : []));
   const was = new Map(cards.map((c) => [c, c.getBoundingClientRect().top]));
   change();
   if (reduce) return;
@@ -5828,6 +5863,13 @@ function insertTaskByDate(t) {
 
 // A question with several answers, e.g. [['keep', 'Keep editing'], ['save', 'Save', 'primary']]. Esc or a click
 // outside it answers with the first one.
+// A button's words as a stack (Paul, 2026-11-16): a bold heading (SAVE ON, DELETE FROM) at the top, then the
+// boards centred below it. The button needs the class save-to.
+function boardButtonLines(head, ...where) {
+  return [el('span', { class: 'save-head' }, head),
+    el('span', { class: 'save-where' }, where.map((t) => el('span', { class: 'save-line', 'data-line': t }, t)))];
+}
+
 function askChoice(message, answers, focus = answers.length - 1) {
   return new Promise((resolve) => {
     const dlg = el('dialog', { class: 'ask', 'aria-label': message });
@@ -5880,9 +5922,7 @@ function openTaskDialog(opts = {}) {
   const save = el('button', { type: 'button', class: 'primary' }, editing ? 'Save' : 'Add task');
   // Adding: two buttons, so where it goes is always asked (Paul, 2026-11-08). It's always on the task board.
   // Each Add button is a stack, centred: "Save to:" on top, then where it goes (Paul, 2026-11-16).
-  // SAVE ON sits at the top of both buttons; where it goes is centred below it (Paul, 2026-11-16).
-  const saveToLines = (...where) => [el('span', { class: 'save-head' }, 'Save on'),
-    el('span', { class: 'save-where' }, where.map((t) => el('span', { class: 'save-line', 'data-line': t }, t)))];
+  const saveToLines = (...where) => boardButtonLines('Save on', ...where);
   // SAVE ON Task Board is always the default (blue) button: Enter and "Add task" use it (Paul, 2026-11-16).
   const saveBoard = editing ? null : el('button', { type: 'button', class: 'save-to primary' }, saveToLines('Task Board'));
   const saveDefault = () => (saveBoard && !saveBoard.hidden ? saveBoard : save).click();
@@ -6019,9 +6059,10 @@ async function askDeleteTask(id) {
     && (t.project === GENERAL || settings.columns.includes(t.project));   // its card shows in a mail column
   const choice = await askChoice(`Delete “${t.title}”?`, [
     ['cancel', 'Cancel'],
-    ...(inMail ? [['mail', 'From StediMail only']] : []),
-    ['all', inMail ? 'From StediMail and StediTask' : 'Delete it', 'danger'],
-  ], 0);   // Cancel is the one Enter presses
+    // laid out like the New task buttons (Paul, 2026-11-16)
+    ...(inMail ? [['mail', boardButtonLines('Delete from', 'Mail Board'), 'save-to delete-from']] : []),
+    ['all', inMail ? boardButtonLines('Delete from', 'Task Board', '+', 'Mail Board') : boardButtonLines('Delete from', 'Task Board'), 'save-to delete-from danger'],
+  ]);   // the red one (everywhere the task is) is the default Enter presses (Paul, 2026-11-16)
   if (choice === 'all') deleteTask(id);
   else if (choice === 'mail') {
     t.hideInMail = true;

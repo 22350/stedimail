@@ -611,12 +611,14 @@ dialog.pick-labels .pick-row input { width: 20px; height: 20px; margin: 0; flex:
 
 /* yes/no for things that can't be undone */
 dialog.ask { max-width: 460px; width: calc(100% - 32px); border-radius: 14px; padding: 20px 22px; }
+/* a question with stacked board buttons (Delete task) grows to fit them (Paul, 2026-11-16) */
+dialog.ask:not(.task-edit):has(.save-to) { width: fit-content; min-width: min(460px, calc(100% - 32px)); max-width: calc(100% - 32px); }
 dialog.ask p { margin: 0 0 10px; font-size: 17px; line-height: 1.45; }
 dialog.ask p.hint { font-size: 15px; opacity: .8; }
 .ask-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .ask-buttons button { padding: 10px 18px; font-size: 16px; }
 .ask-buttons button.save-to { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
-.ask-buttons button.save-to .save-head { display: block; font-size: 1.58em; font-weight: 900; -webkit-text-stroke: .7px currentColor; text-transform: uppercase; letter-spacing: .08em; line-height: 1.25; }
+.ask-buttons button.save-to .save-head { display: block; white-space: nowrap; font-size: 1.58em; font-weight: 900; -webkit-text-stroke: .7px currentColor; text-transform: uppercase; letter-spacing: .08em; line-height: 1.25; }
 /* the Task Board + Mail Board button: a bit more room under SAVE TO: (Paul, 2026-11-16) */
 .ask-buttons button.save-to:has(.save-line ~ .save-line) .save-head { margin-bottom: 6px; }
 .ask-buttons button.save-to .save-where { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -625,6 +627,9 @@ dialog.ask p.hint { font-size: 15px; opacity: .8; }
 .ask-buttons button.save-to .save-line[data-line="Task Board"] { letter-spacing: .045em; }
 .ask-buttons button.save-to .save-line[data-line="Mail Board"] { letter-spacing: .066em; }
 .ask-buttons button.save-to .save-line[data-line="+"] { margin: 3px 0; }
+/* Delete task buttons: DELETE FROM 20% smaller, the boards 12% bigger (Paul, 2026-11-16) */
+.ask-buttons button.delete-from .save-head { font-size: 1.264em; transform: scaleY(1.2); transform-origin: top; padding-bottom: .25em; }
+.ask-buttons button.delete-from .save-line { font-size: 1.344em; }
 button.danger { background: #c0392b; border-color: #c0392b; color: #fff; }
 button.danger:disabled { opacity: .45; cursor: default; }
 .column .delete-all { flex: none; min-height: 40px; margin: 0 .5rem .5rem; font-weight: 600;
