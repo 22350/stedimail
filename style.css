@@ -310,6 +310,10 @@ a.nav-main { color: var(--text); text-decoration: none; }
 @media (hover: hover) and (prefers-color-scheme: dark) {
   .card-label-link { color: #7fae89; }
 }
+/* Mouse on the word: it brightens to the same color as a hovered card button (Paul, 2026-11-16). */
+@media (hover: hover) {
+  .card-label:hover + .card-label-link { color: var(--text); }
+}
 @media (hover: none) {
   .card-actions { position: static; display: flex; justify-content: flex-end; margin-top: .3rem; }
 }
