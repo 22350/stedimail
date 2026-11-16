@@ -3720,7 +3720,6 @@ function openFolderMenu(anchor, id) {
 
 async function moveToFolder(id, l) {
   const t = state.threads.get(id);
-  const subject = t?.subject || '';
   try {
     await api(`/threads/${id}/modify`, { method: 'POST', body: { addLabelIds: [l.id], removeLabelIds: ['INBOX'] } });
     if (t) { t.labels.add(l.id); t.labels.delete('INBOX'); }
@@ -3732,53 +3731,12 @@ async function moveToFolder(id, l) {
       if (t) { t.labels.delete(l.id); t.labels.add('INBOX'); }
       assign(columns()); render(); refreshReaderActions(id);
     } });
-    if (subject) offerFolderRule(subject, l);
   } catch (e) { if (!(e instanceof AuthError)) toast('Could not move it: ' + e.message); }
 }
 
-// Gmail filters need Gmail's settings permission, asked for the first time a rule is made.
-const FILTER_SCOPE = 'https://www.googleapis.com/auth/gmail.settings.basic';
-const filterAuth = { token: null, exp: 0, pending: null };
-async function filtersApi(path, method = 'GET', body) {
-  const token = await scopedSignIn(filterAuth, FILTER_SCOPE);
-  const res = await fetch(API + '/settings/filters' + path, { method,
-    headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    body: body ? JSON.stringify(body) : undefined });
-  if (!res.ok) { let msg = res.statusText; try { msg = (await res.json()).error.message; } catch {} throw new Error(msg); }
-  return res.status === 204 ? null : res.json();
-}
-
-function offerFolderRule(subject, l) {
-  const words = subject.replace(/^\s*((re|fwd?|fw)\s*:\s*)+/i, '').trim();
-  const input = el('input', { value: words, 'aria-label': 'Subject words for the rule' });
-  const err = el('p', { class: 'hint' });
-  const dlg = el('dialog', { class: 'ask folder-rule', 'aria-label': 'Make a rule?' });
-  const no = el('button', { type: 'button' }, 'No thanks');
-  const yes = el('button', { type: 'button', class: 'primary' }, 'Create rule');
-  dlg.append(el('h2', {}, 'Make a rule for this?'),
-    el('p', {}, `Future emails whose subject contains these words will go straight to “${l.name}” and skip the Inbox:`),
-    input, el('p', { class: 'hint' }, 'You can shorten it to the part that stays the same each time.'), err,
-    el('div', { class: 'ask-buttons' }, [no, yes]));
-  const shut = () => { dlg.close(); dlg.remove(); };
-  no.addEventListener('click', shut);
-  dlg.addEventListener('cancel', (e) => { e.preventDefault(); shut(); });
-  yes.addEventListener('click', async () => {
-    const q = input.value.trim();
-    if (!q) { err.textContent = 'Type the subject words, or click No thanks.'; return; }
-    yes.disabled = true; yes.textContent = 'Creating…';
-    try {
-      await filtersApi('', 'POST', { criteria: { subject: q }, action: { addLabelIds: [l.id], removeLabelIds: ['INBOX'] } });
-      shut();
-      toast(`Rule made: subjects with “${q}” go to “${l.name}”`);
-    } catch (e) {
-      yes.disabled = false; yes.textContent = 'Create rule';
-      err.textContent = 'Could not make the rule: ' + e.message;
-    }
-  });
-  document.body.append(dlg);
-  dlg.showModal();
-  no.focus();
-}
+// StediMail never changes Gmail's settings, so it doesn't ask for that permission (Paul, 2026-11-16): the
+// "Make a rule for this?" offer after Move to folder (made Gmail filters) is gone, and signatures are made
+// and changed in Gmail itself.
 
 function refreshReaderActions(id) {
   const box = $('#reader-actions');
@@ -3922,8 +3880,9 @@ function richEditor(placeholder, changed) {
     const href = /^[a-z]+:/i.test(url) ? url : 'https://' + url;
     if (window.getSelection()?.toString()) fmt('createLink', href); else fmt('insertHTML', `<a href="${escapeHtml(href)}">${escapeHtml(url)}</a>`);
   };
-  // Signature (Paul, 2026-11-12): the one in Gmail's settings, added at the end of the message on a click.
-  // Set up or edit it here, and it's saved to Gmail, so Gmail uses the same one.
+  // Signature (Paul, 2026-11-12; read-only since 2026-11-16): the signatures in Gmail's settings, one per sending
+  // address (all Google lets an app see), added at the end of the message on a click. They're made and changed
+  // in Gmail only (the menu opens Gmail's settings), so StediMail needs no permission to change Gmail's settings.
   const putSignature = (html) => {
     editor.querySelector('[data-signature]')?.remove();
     editor.append(el('div', { 'data-signature': '' }));
@@ -3932,12 +3891,15 @@ function richEditor(placeholder, changed) {
     changed();
   };
   const sigBtn = tool('Signature', 'Signature', async () => {
-    const sig = await loadSignature();
-    openMenu(sigBtn, sig ? [
-      { label: editor.querySelector('[data-signature]') ? 'Put signature back at the end' : 'Add signature', run: () => putSignature(sig) },
-      { label: 'Edit signature…', run: () => editSignature(sig, putSignature) },
-      ...(editor.querySelector('[data-signature]') ? [{ label: 'Remove signature from this message', run: () => { editor.querySelector('[data-signature]')?.remove(); changed(); } }] : []),
-    ] : [{ label: 'Set up signature…', run: () => editSignature('', putSignature) }]);
+    const sigs = await loadSignatures();
+    const has = !!editor.querySelector('[data-signature]');
+    openMenu(sigBtn, [
+      ...(sigs.length ? [{ heading: has ? 'Put back at the end' : 'Add a signature' }] : []),
+      ...sigs.map((x) => ({ label: sigs.length === 1 ? (has ? 'Put signature back at the end' : 'Add signature') : x.address, run: () => putSignature(x.html) })),
+      ...(has ? [{ label: 'Remove signature from this message', run: () => { editor.querySelector('[data-signature]')?.remove(); changed(); } }] : []),
+      ...(sigs.length || has ? [{ sep: true }] : []),
+      { label: sigs.length ? 'Change signatures in Gmail…' : 'No signature yet: set one up in Gmail…', run: openGmailSignatures },
+    ]);
   }, 'word');
   const formatTools = [
     tool('Bold', 'B', () => fmt('bold'), 'b'), tool('Italic', 'I', () => fmt('italic'), 'i'),
@@ -4520,53 +4482,20 @@ const sameMailbox = (a, b) => {
   return plain(a) === plain(b);
 };
 
-// The signature in Gmail's settings (the main address). Reading it needs nothing extra; saving it needs
-// Gmail's settings permission (the same one rules use), asked for the first time.
-let signatureLoad = null;
-function loadSignature() {
-  signatureLoad ||= api('/settings/sendAs').then((r) => (r.sendAs || []).find((x) => x.isPrimary)?.signature || '').catch(() => { signatureLoad = null; return ''; });
-  return signatureLoad;
+// The signatures in Gmail's settings: one per sending address that has one, the main address first.
+// Read each time the menu opens, so one just changed in Gmail shows up. Reading needs nothing extra.
+async function loadSignatures() {
+  try {
+    const { sendAs = [] } = await api('/settings/sendAs');
+    return sendAs.filter((x) => (x.signature || '').trim())
+      .sort((a, b) => b.isPrimary - a.isPrimary)
+      .map((x) => ({ address: x.sendAsEmail, html: x.signature }));
+  } catch (e) { if (e instanceof AuthError) throw e; toast('Could not read your Gmail signatures: ' + e.message); return []; }
 }
-async function saveSignature(html) {
-  const { sendAs = [] } = await api('/settings/sendAs');
-  const main = sendAs.find((x) => x.isPrimary);
-  if (!main) throw new Error('No main address found');
-  const token = await scopedSignIn(filterAuth, FILTER_SCOPE);
-  const res = await fetch(`${API}/settings/sendAs/${encodeURIComponent(main.sendAsEmail)}`, { method: 'PATCH',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ signature: html }) });
-  if (!res.ok) { let msg = res.statusText; try { msg = (await res.json()).error.message; } catch {} throw new Error(msg); }
-  signatureLoad = Promise.resolve(html);
-}
-function editSignature(current, put) {
-  const box = el('div', { class: 'reply-editor sig-editor', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true',
-    'aria-label': 'Your signature', 'data-placeholder': 'Your name, phone, website…' });
-  box.innerHTML = cleanHtml(current);
-  const err = el('p', { class: 'hint' });
-  const dlg = el('dialog', { class: 'ask sig-dialog', 'aria-label': 'Signature' });
-  const cancel = el('button', { type: 'button' }, 'Cancel');
-  const save = el('button', { type: 'button', class: 'primary' }, 'Save and add');
-  dlg.append(el('h2', {}, current ? 'Edit your signature' : 'Set up your signature'), box,
-    el('p', { class: 'hint' }, 'It\u2019s saved to your Gmail settings, so Gmail uses the same signature.'), err,
-    el('div', { class: 'ask-buttons' }, [cancel, save]));
-  const shut = () => { dlg.close(); dlg.remove(); };
-  cancel.addEventListener('click', shut);
-  dlg.addEventListener('cancel', (e) => { e.preventDefault(); shut(); });
-  save.addEventListener('click', async () => {
-    const html = cleanHtml(box.innerHTML).trim();
-    save.disabled = true; save.textContent = 'Saving\u2026';
-    try {
-      await saveSignature(html);
-      shut();
-      if (html) put(html);
-      toast(html ? 'Signature saved and added' : 'Signature removed');
-    } catch (e) {
-      save.disabled = false; save.textContent = 'Save and add';
-      err.textContent = 'Could not save it: ' + e.message;
-    }
-  });
-  document.body.append(dlg);
-  dlg.showModal();
-  box.focus();
+// Gmail's settings page with the signatures (General tab), for the signed-in account (see openGmailRules).
+function openGmailSignatures() {
+  window.open('https://mail.google.com/mail/#settings/general', '_blank', 'noopener');
+  toast('Signatures are near the bottom of Gmail\u2019s General settings. Change them there, then pick one here.');
 }
 
 let ownName = null;

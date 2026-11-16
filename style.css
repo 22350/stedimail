@@ -990,13 +990,8 @@ dialog.date-range h2 { margin: 0 0 12px; font-size: 20px; }
 .range-chip { flex: 0 0 auto; padding: 2px 10px; font-size: 13px; border-radius: 999px; white-space: nowrap; }
 .more-hint { text-align: center; padding: 14px 0 18px; font-size: 14px; opacity: .7; }
 /* Move to folder: the rule offer */
-dialog.folder-rule h2 { margin: 0 0 10px; font-size: 20px; }
-dialog.folder-rule input { width: 100%; box-sizing: border-box; font: inherit; font-size: 17px; padding: 10px; border-radius: 8px; margin: 4px 0 6px; }
 #menu { max-height: 70vh; overflow-y: auto; }
 /* signature editor */
-dialog.sig-dialog { max-width: 560px; }
-dialog.sig-dialog h2 { margin: 0 0 10px; font-size: 20px; }
-.sig-editor { min-height: 120px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 6px; }
 dialog.ask.near { position: fixed; margin: 0; }
 .cleanup-run button { white-space: nowrap; flex: 0 0 auto; }
 
