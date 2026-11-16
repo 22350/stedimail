@@ -2646,6 +2646,13 @@ function dateLabel(ms, full) {
   return full ? d.toLocaleString([], { ...opts, ...time }) : d.toLocaleDateString([], opts);
 }
 
+// A card's date and time, e.g. "Nov 16, 1:38 PM" (the year too when it isn't this year)
+function cardWhen(ms) {
+  const d = new Date(ms), opts = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleString([], opts);
+}
+
 function setStatus(text) { $('#status').textContent = text; }
 
 let toastTimer;
@@ -3232,7 +3239,8 @@ function renderCard(t, colIdx) {
       t.count > 1 ? el('span', { class: 'num' }, String(t.count)) : null,
       where,
       // The date a card sorts by, so the column reads in order; a returned email says when it was sent on hover.
-      el('time', sortTime(t) > t.date ? { title: `Sent ${dateLabel(t.date, true)}` } : {}, dateLabel(sortTime(t))),
+      // Date AND time, even for today (Paul, 2026-11-16): sender, date, time across the top row
+      el('time', sortTime(t) > t.date ? { title: `Sent ${dateLabel(t.date, true)}` } : {}, cardWhen(sortTime(t))),
     ]),
     el('div', { class: 'body' }, [
       el('span', { class: 'subj' }, t.subject),
@@ -3240,8 +3248,11 @@ function renderCard(t, colIdx) {
     ]),
     t.attachments ? el('div', { class: 'clip' }, [icon('clip'), String(t.attachments)]) : null,
     snoozedLabelOf(t) ? el('div', { class: 'snoozed' }, [icon('clock'), 'Back ' + whenLabel(snoozedLabelOf(t).due)]) : null,
-    cardLabelField(t, () => card),
-    el('span', { class: 'card-label-link', 'aria-hidden': 'true' }, 'Label'),   // the empty field's word, drawn as a link
+    // Bottom row, left: the card's label; the hover buttons pop up to its right (Paul, 2026-11-16)
+    el('span', { class: 'label-cell' }, [
+      cardLabelField(t, () => card),
+      el('span', { class: 'card-label-link', 'aria-hidden': 'true' }, 'Label'),   // the empty field's word, drawn as a link
+    ]),
     el('div', { class: 'card-actions' }, [
       // Color first, then Gmail's own order: Archive, Spam, Delete, Read/Unread, Snooze (Paul, 2026-11-16)
       iconButton('Color', 'palette', (b) => openColorPicker(b, t.id)),

@@ -282,8 +282,13 @@ a.nav-main { color: var(--text); text-decoration: none; }
 /* A blank strip across the top of each card where those buttons appear, so they never cover the sender
    or subject (Paul, 2026-11-03). Touch screens show them below the text instead, so no strip there. */
 @media (hover: hover) {
-  .card { padding-top: calc(36px + .45rem); }
+  /* Now a blank strip along the BOTTOM: the hover buttons pop up there (Paul, 2026-11-16) */
+  .card { padding-bottom: calc(36px + .45rem); }
+  .card-actions { top: auto; bottom: .15rem; }
 }
+/* Bottom row: the label on the left, the hover buttons on the right (Paul, 2026-11-16) */
+.card .top { align-items: center; }
+.label-cell { position: relative; display: flex; min-width: 0; }
 /* A card's own label, in that strip. The hover buttons float over it, as over everything else, except
    while typing. An empty one only shows on hover, with the buttons. */
 .card-label {
@@ -298,16 +303,25 @@ a.nav-main { color: var(--text); text-decoration: none; }
   .card-label::placeholder { color: #7fae89; }
   .card-label:hover::placeholder { color: #a3cfac; }
 }
+.card-label { font-weight: 300; font-style: italic; color: var(--text); font-family: "Noto Sans", "Adwaita Sans", system-ui, sans-serif; }   /* the label lighter and italic (Paul, 2026-11-16) */
+@media (prefers-color-scheme: dark) { .card-label { color: #fff; } }   /* white (Paul, 2026-11-16) */
+.card-label::placeholder { font-style: normal; }
 .card-label:focus { border-color: var(--accent); background: var(--panel); outline: none; }
-.card .card-label:focus ~ .card-actions { display: none; }
 @media (hover: hover) {
-  .card-label { position: absolute; top: .15rem; left: .5rem; width: calc(100% - .7rem); }
+  .label-cell { position: absolute; left: .5rem; bottom: .15rem; max-width: calc(100% - 1rem); }
+  /* while the buttons show, the label keeps to the space left of them */
+  .card:hover .label-cell, .card:focus-within .label-cell { max-width: calc(100% - 1rem - 240px); }
+  .card .label-cell:has(.card-label:focus) { max-width: calc(100% - 1rem); }   /* typing: the buttons hide, full width */
+  .card:has(.card-label:focus) .card-actions { display: none; }
+  .card-label { field-sizing: content; width: auto; min-width: 4.5rem; max-width: 100%; height: 36px; }   /* as wide as its text */
   .card-label:placeholder-shown { display: none; }
   .card:hover .card-label, .card .card-label:focus { display: block; }   /* stays open while typing, wherever the mouse goes */
+  /* an empty label takes no room off the sender until the mouse is on the card */
+  .card:not(:hover) .label-cell:has(.card-label:placeholder-shown:not(:focus)) { display: none; }
   /* Chrome won't underline placeholder text, so the empty field's "Label" is a real word laid over it,
      underlined like a link (Paul, 2026-11-16). Clicks pass through to the field. */
   .card-label::placeholder { color: transparent; }
-  .card-label-link { display: none; position: absolute; top: .15rem; left: calc(.5rem + 1px + .35rem);
+  .card-label-link { display: none; position: absolute; top: 0; left: calc(1px + .35rem);
     line-height: 36px; font-size: .95rem; color: #4f8a5c; text-decoration: underline; text-underline-offset: 3px;
     pointer-events: none; }
   .card:hover .card-label:placeholder-shown:not(:focus) + .card-label-link { display: block; }
