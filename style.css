@@ -869,6 +869,11 @@ dialog.task-edit .spacer { flex: 1; }
 .gantt .ghead .glabel { font-size: 1.625rem; font-weight: 400; letter-spacing: .08em; }
 /* the line between the names and the weeks: black (Paul, 2026-11-09) */
 .gantt .glabel { border-right-color: #000; }
+/* Black lines below the black header (Paul, 2026-11-16): between every row all the way across, and down from
+   every week line. In the header itself the lines stay gray, the names column's edge too. */
+.gantt .grow:not(.ghead) { border-bottom-color: #000; }
+.gantt .grow:not(.ghead) .gday { border-left-color: #000; }
+.gantt .ghead .glabel { border-right-color: var(--border); }
 
 /* Clean up Inbox */
 dialog.cleanup { max-width: 680px; width: calc(100% - 32px); max-height: calc(100vh - 48px); border-radius: 14px; padding: 0; display: none; flex-direction: column; }
