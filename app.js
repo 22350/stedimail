@@ -5883,7 +5883,9 @@ function openTaskDialog(opts = {}) {
   // SAVE ON sits at the top of both buttons; where it goes is centred below it (Paul, 2026-11-16).
   const saveToLines = (...where) => [el('span', { class: 'save-head' }, 'Save on'),
     el('span', { class: 'save-where' }, where.map((t) => el('span', { class: 'save-line', 'data-line': t }, t)))];
-  const saveBoard = editing ? null : el('button', { type: 'button', class: 'save-to' }, saveToLines('Task Board'));
+  // SAVE ON Task Board is always the default (blue) button: Enter and "Add task" use it (Paul, 2026-11-16).
+  const saveBoard = editing ? null : el('button', { type: 'button', class: 'save-to primary' }, saveToLines('Task Board'));
+  const saveDefault = () => (saveBoard && !saveBoard.hidden ? saveBoard : save).click();
   let boardOnly = false;
   saveBoard?.addEventListener('click', () => { boardOnly = true; save.click(); boardOnly = false; });
   const msg = el('p', { class: 'error', role: 'alert' });
@@ -5915,7 +5917,7 @@ function openTaskDialog(opts = {}) {
     const choice = await askChoice(editing ? 'Save your changes to this task?' : 'Add this task?', [
       ['keep', 'Keep editing'], ['discard', editing ? "Don't save" : "Don't add"], ['save', editing ? 'Save changes' : 'Add task', 'primary']]);
     asking = false;
-    if (choice === 'save') save.click();
+    if (choice === 'save') saveDefault();
     else if (choice === 'discard') finish();
   };
   dlg.addEventListener('cancel', (e) => { e.preventDefault(); leave(); });
@@ -5923,7 +5925,7 @@ function openTaskDialog(opts = {}) {
   const outside = (e) => { const r = dlg.getBoundingClientRect(); return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom; };
   dlg.addEventListener('pointerdown', (e) => { downOutside = e.target === dlg && outside(e); });
   dlg.addEventListener('click', (e) => { if (downOutside && e.target === dlg && outside(e)) leave(); downOutside = false; });
-  title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save.click(); } });
+  title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveDefault(); } });
   save.addEventListener('click', () => {
     if (!editing && !saveBoard.hidden) inMailBox.checked = !boardOnly;   // which Add button was pressed
     const name = title.value.trim();
@@ -5965,6 +5967,7 @@ function openTaskDialog(opts = {}) {
     inMailRow.hidden = true;   // the two Add buttons say it instead
     saveBoard.hidden = !mail;
     save.classList.add('save-to');
+    save.classList.toggle('primary', !mail);   // with two buttons, Task Board only is the blue one
     save.replaceChildren(...(mail ? saveToLines('Task Board', '+', 'Mail Board') : saveToLines('Task Board')));
     if (mail) inMailBox.checked = true;
   };
