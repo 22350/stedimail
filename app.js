@@ -7,7 +7,22 @@ const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 // Full access: gmail.modify can move mail to Trash but not delete it forever.
 // Full Gmail access (delete forever needs it), plus read-only Contacts and "Other contacts" (people you've
 // emailed) for address suggestions in To. A scope change makes everyone sign in once more.
-const SCOPE = 'https://mail.google.com/ https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly';
+// Gmail's read/change/send permission, not full access (Paul, 2026-11-16): easier for Google to approve. Only
+// erasing mail for good (Delete forever, Empty trash, Delete all spam) needs full access, asked the first time.
+const SCOPE = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly';
+const FULL_MAIL_SCOPE = 'https://mail.google.com/';
+const eraseAuth = { token: null, exp: 0, pending: null };
+// A Gmail call that erases mail for good, with the full-access permission (asks Google for it if needed).
+async function eraseApi(path, { method = 'POST', body } = {}) {
+  let token;
+  try { token = await scopedSignIn(eraseAuth, FULL_MAIL_SCOPE); }
+  catch (e) { throw new Error(`deleting for good needs your OK in Google's window (${e.message}). Emails in Trash and Spam are deleted by Gmail after 30 days anyway.`); }
+  const res = await fetch(API + path, { method,
+    headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined });
+  if (!res.ok) { let msg = res.statusText; try { msg = (await res.json()).error.message; } catch {} throw new Error(msg); }
+  return res.status === 204 ? null : res.json().catch(() => null);
+}
 const LABEL_PREFIX = 'Board/';
 const COLOR_PREFIX = 'Board/Color/';
 // Mailboard's own snooze (Gmail's API can't snooze): a hidden label holds the wake time in UTC, e.g.
@@ -1110,7 +1125,7 @@ async function bulkDeleteForever(all) {
     const ids = await listAllMessageIds(all.scope);
     for (let i = 0; i < ids.length; i += 1000) {
       setStatus(`Deleting… ${Math.min(i + 1000, ids.length).toLocaleString()} of ${ids.length.toLocaleString()}`);
-      await api('/messages/batchDelete', { method: 'POST', body: { ids: ids.slice(i, i + 1000) } });
+      await eraseApi('/messages/batchDelete', { method: 'POST', body: { ids: ids.slice(i, i + 1000) } });
     }
     clearSelection();
     setStatus('');
@@ -2099,7 +2114,8 @@ async function deleteForever(threadIds) {
   if (!await askConfirm(`Delete ${n === 1 ? 'this conversation' : n.toLocaleString() + ' conversations'} forever? This can't be undone.`, 'Delete forever')) return false;
   try {
     setStatus(n > 1 ? 'Deleting…' : '');
-    await mapLimit(threadIds, 5, (id) => api(`/threads/${id}`, { method: 'DELETE' }));
+    await eraseApi(`/threads/${threadIds[0]}`, { method: 'DELETE' });   // the first asks for the permission, if needed
+    await mapLimit(threadIds.slice(1), 5, (id) => eraseApi(`/threads/${id}`, { method: 'DELETE' }));
     for (const id of threadIds) {
       state.threads.delete(id);
       state.selected.delete(id);
