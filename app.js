@@ -812,6 +812,22 @@ const metadataPath = (id) =>
 
 // Fetch summaries for listed threads whose cached copy is out of date.
 // Returns the ids that loaded; threads that vanish mid-load are skipped.
+// The board's conversations, remembered in this browser between openings (Paul, 2026-11-16): a new window
+// only fetches the ones that changed since (Gmail's historyId says which), instead of every one, five at a
+// time. Kept per account, like everything else; nothing leaves the browser.
+const THREAD_CACHE_MAX = 1500;
+function loadThreadCache() {
+  if (state.threads.size) return;
+  for (const t of store.get('threadCache', [])) {
+    if (t?.id) state.threads.set(t.id, { ...t, labels: new Set(t.labels || []) });
+  }
+}
+function saveThreadCache() {
+  const keep = [...state.threads.values()].sort((a, b) => b.date - a.date).slice(0, THREAD_CACHE_MAX)
+    .map((t) => ({ ...t, labels: [...t.labels] }));
+  store.set('threadCache', keep);
+}
+
 async function fetchSummaries(listed) {
   const ok = new Set(listed.map((t) => t.id));
   const stale = listed.filter((t) => state.threads.get(t.id)?.historyId !== t.historyId);
@@ -1794,6 +1810,7 @@ async function loadBoard() {
     assign(cols);
     flagCollapsedNewMail(cols);
     const newMail = inboxGotNewMail(cols);
+    saveThreadCache();
     render();
     if (newMail) bringInboxToTop();
     state.lastLoad = Date.now();
@@ -6896,6 +6913,7 @@ async function start() {
   setupReaderResize();
   setupCopyFloat();
   show('board');
+  loadThreadCache();
   await loadBoard();
 }
 
