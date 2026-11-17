@@ -3288,7 +3288,16 @@ function renderCard(t, colIdx) {
     setTimeout(() => { if (mailDrag.card === card) { card.before(mailDrag.ph); card.style.display = 'none'; } });
   });
   card.addEventListener('dragend', () => { state.dragging = false; state.dragId = null; clearNestTarget(); card.classList.remove('dragging'); endMailDrag(); });
-  card.addEventListener('click', () => openThread(t.id));
+  if (colIdx >= 0 && state.nestKids.has(t.id)) {
+    // A card with emails nested under it: double-click hides or shows them, like a task card folds
+    // (Paul, 2026-11-17). A single click opens it once the double-click time passes with no second click.
+    let timer = null;
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('button, input, a')) return;
+      if (timer) { clearTimeout(timer); timer = null; toggleNest(t.id); return; }
+      timer = setTimeout(() => { timer = null; openThread(t.id); }, DOUBLE_CLICK_MS);
+    });
+  } else card.addEventListener('click', () => openThread(t.id));
   return card;
 }
 
@@ -5690,12 +5699,10 @@ function renderTaskColumn(project, col, last) {
   (remove || sortBtn).classList.add('steady-aim-left');
   const plus = col === p.columns[0] ? addTaskButton(`Add a task to ${project}`, () => openTaskDialog({ project, col }), 'plus') : null;   // green + back (Paul, 2026-11-09)
   const head = el('h2', {}, [el('span', { class: 'colname', title: col }, col), el('span', { class: 'count' }, String(items.length)), plus, sortBtn, remove]);
-  // "+ Add task" only at the bottom of the first column (To do) (Paul, 2026-11-09)
-  const add = col === p.columns[0] ? el('button', { type: 'button', class: 'add-task' }, '+ Add task') : null;
-  add?.addEventListener('click', () => openTaskDialog({ project, col }));
+  // No "+ Add task" at the bottom of To do any more; the green + in its header adds (Paul, 2026-11-17)
   const collapsed = (p.collapsed || []).includes(col);
   const node = el('section', { class: 'column task-col' + (last ? ' finished-col' : '') + (collapsed ? ' collapsed' : ''), 'data-col': col },
-    [head, el('div', { class: 'cards' }, items.map((t) => renderTask(t, last))), add]);
+    [head, el('div', { class: 'cards' }, items.map((t) => renderTask(t, last)))]);
   node.append(...resizeHandles(node));
   head.title = 'Double-click to minimize or restore this column';
   onDoubleClick(head, () => { if (!matchMedia('(max-width: 640px)').matches) toggleTaskCollapsed(p, col, node); });
