@@ -787,6 +787,7 @@ async function unnestWithUndo(id) {
 function toggleNest(id) {
   if (NEST_COLLAPSED[id]) delete NEST_COLLAPSED[id]; else NEST_COLLAPSED[id] = 1;
   store.set('nestCollapsed', NEST_COLLAPSED);
+  store.set('newMailNests', store.get('newMailNests', []).filter((x) => x !== id));   // seen: no longer red
   render();
 }
 
@@ -1747,8 +1748,15 @@ function flagCollapsedNewMail(cols) {
     newest = Math.max(newest, ...dates);
     if (seen != null && settings.collapsedCols.includes(col.name) && dates.some((d) => d > seen)) marks.add(col.name);
   });
+  // The same for a parent card with its nested emails hidden: new mail in one of them turns the whole
+  // card red until the nest is shown again (Paul, 2026-11-17).
+  const nestMarks = new Set(store.get('newMailNests', []).filter((id) => state.nestKids.has(id) && NEST_COLLAPSED[id]));
+  if (seen != null) for (const [id, kids] of state.nestKids) {
+    if (NEST_COLLAPSED[id] && kids.map(incoming).some((t) => t && t.date > seen)) nestMarks.add(id);
+  }
   store.set('newestSeen', newest);
   store.set('newMailCols', [...marks]);
+  store.set('newMailNests', [...nestMarks]);
 }
 
 // True when an email newer than any seen so far reached the Inbox column, so it can be brought into view.
@@ -3211,7 +3219,9 @@ function renderCard(t, colIdx) {
   }
   const card = el('article', {
     class: 'card' + (t.unread ? ' unread' : '') + (t.id === state.openId ? ' open' : '') + (color ? ' colored' : '')
-      + (state.selected.has(t.id) ? ' selected' : '') + (colIdx >= 0 && state.nestOf.has(t.id) ? ' nested' : ''),
+      + (state.selected.has(t.id) ? ' selected' : '') + (colIdx >= 0 && state.nestOf.has(t.id) ? ' nested' : '')
+      + (colIdx >= 0 && state.nestKids.has(t.id) ? ' has-nest' : '')
+      + (colIdx >= 0 && NEST_COLLAPSED[t.id] && store.get('newMailNests', []).includes(t.id) ? ' new-mail' : ''),
     hidden: colIdx >= 0 && NEST_COLLAPSED[state.nestOf.get(t.id)] ? '' : null,
     style: color ? `--card-color:${color.bg}` : null,
     tabindex: '0', draggable: 'true', 'data-id': t.id, 'data-col': colIdx,
@@ -3221,7 +3231,6 @@ function renderCard(t, colIdx) {
   }, [
     el('div', { class: 'top' }, [
       checkbox('Select', state.selected.has(t.id), () => toggleSelect(t.id)),
-      colIdx >= 0 && state.nestKids.has(t.id) ? nestToggle(t.id) : null,
       el('span', { class: 'people' }, t.people),
       t.count > 1 ? el('span', { class: 'num' }, String(t.count)) : null,
       where,
@@ -3250,6 +3259,8 @@ function renderCard(t, colIdx) {
       iconButton('Mark as unread', 'unread', () => forSelection(t.id, 'unread', () => { if (!t.unread) toggleRead(t.id); })),
       iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, t.id)),
     ]),
+    // Along the bottom of the card, like the "earlier messages" bar in an open email (Paul, 2026-11-17)
+    colIdx >= 0 && state.nestKids.has(t.id) ? nestToggle(t.id) : null,
   ]);
   card.addEventListener('dragover', (e) => {
     const target = nestTargetFor(card, t, colIdx, e);
@@ -3349,14 +3360,17 @@ function cardLabelField(t, card) {
   return input;
 }
 
-// The arrow on a parent card: shows or hides the emails under it, and says how many (and how many unread).
+// The bar along the bottom of a parent card: shows or hides the emails under it, and says how many (and
+// how many unread), worded like the "earlier messages" bar in an open email (Paul, 2026-11-17).
 function nestToggle(id) {
   const kids = state.nestKids.get(id);
   const closed = !!NEST_COLLAPSED[id];
+  const n = kids.length, s = n === 1 ? '' : 's';
   const unread = kids.filter((k) => state.threads.get(k).unread).length;
-  const label = `${closed ? 'Show' : 'Hide'} ${kids.length} nested email${kids.length === 1 ? '' : 's'}`;
-  const b = iconButton(label, null, () => toggleNest(id), `${closed ? '▸' : '▾'} ${kids.length}${closed && unread ? ` (${unread} unread)` : ''}`);
-  b.classList.add('nest-toggle');
+  const text = closed ? `▸ ${n} nested email${s}${unread ? ` (${unread} unread)` : ''}` : `▾ Hide ${n} nested email${s}`;
+  const b = el('button', { type: 'button', class: 'nest-toggle', draggable: 'false', 'aria-expanded': String(!closed),
+    title: `${closed ? 'Show' : 'Hide'} the emails nested under this one` }, text);
+  b.addEventListener('click', (e) => { e.stopPropagation(); toggleNest(id); });
   return b;
 }
 

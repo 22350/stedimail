@@ -201,9 +201,24 @@ a.nav-main { color: var(--text); text-decoration: none; }
   content: 'Drop to nest under this'; position: absolute; right: .5rem; bottom: .35rem; z-index: 2; padding: .1rem .5rem;
   font-size: .8rem; color: var(--accent-text); background: var(--accent); border-radius: 6px; pointer-events: none;
 }
+/* Nested emails: a bar along the bottom of the parent card, like the "earlier messages" bar (Paul, 2026-11-17) */
 .card .nest-toggle {
-  width: auto; min-width: 44px; min-height: 32px; padding: 0 .5rem; flex: none; font-size: 1rem; white-space: nowrap;
-  color: var(--accent); border: 1px solid var(--border); border-radius: 7px; background: transparent;
+  display: block; width: calc(100% + 1.7rem); margin: .5rem -.85rem -.7rem; min-height: 34px; padding: 0 .85rem;
+  text-align: left; font-size: .9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--muted); background: var(--col); border: 0; border-top: 1px dashed var(--border);
+  border-radius: 0 0 10px 10px; cursor: pointer;
+}
+.card .nest-toggle:hover { color: var(--text); }
+/* new mail in a hidden nest: the whole card red, like a minimized column (Paul, 2026-11-17) */
+.card.new-mail { background: #c62828; border-color: #c62828; color: #fff; }
+.card.new-mail *, .card.new-mail .card-label::placeholder { color: #fff !important; }
+.card.new-mail .nest-toggle { background: #a31f1f; border-top-color: rgba(255,255,255,.5); }
+.card.new-mail .card-actions { background: color-mix(in srgb, #c62828 40%, transparent); }
+@media (hover: hover) {
+  /* the label and hover buttons sit just above the bar */
+  .card.has-nest { padding-bottom: calc(36px + .45rem + 34px); }
+  .card.has-nest .card-actions, .card.has-nest .label-cell { bottom: calc(.15rem + 34px); }
+  .card .nest-toggle { position: absolute; left: 0; right: 0; bottom: 0; width: auto; margin: 0; }
 }
 #drag-ghost { position: fixed; left: 0; top: 0; z-index: 9999; padding: 14px 0 0 14px; pointer-events: none; }
 #drag-ghost[hidden] { display: none; }
