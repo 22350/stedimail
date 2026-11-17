@@ -3207,6 +3207,35 @@ function endMailDrag() {
   card.style.display = '';
 }
 
+// Dragging a card (email or task) up past the top of its column's cards, onto the header bar or above it,
+// scrolls that column up, faster the further up the pointer goes, to reach cards hidden above (Paul, 2026-11-17).
+const dragScroll = {
+  on: false, x: 0, y: 0, frame: 0,
+  tick() {
+    dragScroll.frame = 0;
+    if (!dragScroll.on) return;
+    const col = [...document.querySelectorAll('.column:not(.collapsed)')].find((c) => {
+      const r = c.getBoundingClientRect();
+      return r.width && dragScroll.x >= r.left && dragScroll.x <= r.right;
+    });
+    const box = col?.querySelector('.cards');
+    if (box && box.scrollTop > 0) {
+      const above = box.getBoundingClientRect().top - dragScroll.y;
+      if (above > 0) box.scrollTop -= Math.min(30, 4 + above / 4);
+    }
+    dragScroll.frame = requestAnimationFrame(dragScroll.tick);
+  },
+};
+document.addEventListener('dragstart', (e) => {
+  if (!e.target.closest?.('.card')) return;
+  dragScroll.on = true;
+  if (!dragScroll.frame) dragScroll.frame = requestAnimationFrame(dragScroll.tick);
+}, true);
+document.addEventListener('dragover', (e) => { dragScroll.x = e.clientX; dragScroll.y = e.clientY; }, true);
+const stopDragScroll = () => { dragScroll.on = false; cancelAnimationFrame(dragScroll.frame); dragScroll.frame = 0; };
+document.addEventListener('dragend', stopDragScroll, true);
+document.addEventListener('drop', stopDragScroll, true);
+
 function renderCard(t, colIdx) {
   const color = colorOf(t);
   let where = null;
