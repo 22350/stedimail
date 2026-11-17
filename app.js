@@ -8,7 +8,7 @@ const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 // Full Gmail access (delete forever needs it), plus read-only Contacts and "Other contacts" (people you've
 // emailed) for address suggestions in To. A scope change makes everyone sign in once more.
 // Gmail's read/change/send permission, not full access (Paul, 2026-11-16): easier for Google to approve. Only
-// erasing mail for good (Delete forever, Empty trash, Delete all spam) needs full access, asked the first time.
+// erasing mail for good (Delete forever) needs full access, asked the first time.
 const SCOPE = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly';
 const FULL_MAIL_SCOPE = 'https://mail.google.com/';
 const eraseAuth = { token: null, exp: 0, pending: null };
@@ -1138,13 +1138,7 @@ async function bulkDeleteForever(all) {
   }
 }
 
-// Spam and Trash's "delete all": no ticking boxes first (Paul, 2026-11-05).
-async function deleteWholeFolder() {
-  const scope = columnScope(-1);
-  let total = null;
-  try { total = await scopeTotal(scope); } catch (e) { if (e instanceof AuthError) return; }
-  await bulkDeleteForever({ scope, total });
-}
+// Spam's "Delete all spam" and Trash's "Empty trash" buttons removed (Paul, 2026-11-17).
 
 function linkButton(text, run) {
   const b = el('button', { class: 'link-btn' }, text);
@@ -2961,15 +2955,8 @@ function renderSearchColumn() {
   const sortBtn = iconButton(`Sort: ${sort.label}`, 'sort', (b) => openSortMenu(b, col));
   if (sort.key !== 'newest') sortBtn.classList.add('on');
   sortBtn.classList.add('boxed');   // in a box like the add-task ✓ (Paul, 2026-11-08)
-  let deleteAll = null;
-  const folderLabel = state.searchArgs?.folder?.label;
-  if ((folderLabel === 'SPAM' || folderLabel === 'TRASH') && ids.length) {
-    deleteAll = el('button', { type: 'button', class: 'delete-all' }, folderLabel === 'SPAM' ? 'Delete all spam' : 'Empty trash');
-    deleteAll.addEventListener('click', deleteWholeFolder);
-  }
   const node = el('section', { class: 'column search', 'data-col': '-1' }, [
     el('h2', {}, [columnCheckbox(-1), el('span', { class: 'q' }, title || `“${q}”`), el('span', { class: 'count' }, ids.length + (more ? '+' : '')), sortBtn, close]),
-    deleteAll,
     el('div', { class: 'cards' }, ids.length
       ? ids.map((id) => renderCard(state.threads.get(id), -1))
       : title ? el('p', { class: 'hint' }, 'Nothing here.') : noMatches(q)),
@@ -3511,7 +3498,18 @@ function bodyFrame(m) {
       frame.style.minHeight = holder.style.minHeight = '';
     };
     fit();
-    new ResizeObserver(fit).observe(doc.body);
+    // Refit when an image (or font) finishes loading, or the reader changes width: the things that change an
+    // email's height. No ResizeObserver on the email: fit() itself resizes it while measuring, so a watcher
+    // woke itself up and Chrome kept logging "ResizeObserver loop completed with undelivered notifications"
+    // (Paul, 2026-11-16).
+    let refit = 0, lastWidth = doc.documentElement.clientWidth;
+    const fitSoon = () => { if (!refit) refit = requestAnimationFrame(() => { refit = 0; fit(); }); };
+    doc.addEventListener('load', fitSoon, true);           // images; load doesn't bubble, so listen on the way down
+    doc.fonts?.addEventListener?.('loadingdone', fitSoon);
+    frame.contentWindow.addEventListener('resize', () => {  // fires for our own height changes too: act on width only
+      const w = doc.documentElement.clientWidth;
+      if (w !== lastWidth) { lastWidth = w; fitSoon(); }
+    });
   });
   return frame;
 }

@@ -674,9 +674,6 @@ dialog.ask p.hint { font-size: 15px; opacity: .8; }
 .ask-buttons button.delete-from .save-line { font-size: 1.344em; }
 button.danger { background: #c0392b; border-color: #c0392b; color: #fff; }
 button.danger:disabled { opacity: .45; cursor: default; }
-.column .delete-all { flex: none; min-height: 40px; margin: 0 .5rem .5rem; font-weight: 600;
-  background: rgba(220, 60, 60, .16); border: 1px solid rgba(220, 60, 60, .45); color: inherit; }
-.column .delete-all:hover { background: rgba(220, 60, 60, .28); border-color: rgba(220, 60, 60, .7); }
 
 /* Report issue */
 .report-btn { font-weight: 600; }
