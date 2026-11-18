@@ -3209,6 +3209,9 @@ function endMailDrag() {
 
 // Dragging a card (email or task) up past the top of its column's cards, onto the header bar or above it,
 // scrolls that column up, faster the further up the pointer goes, to reach cards hidden above (Paul, 2026-11-17).
+// Going down (Paul, 2026-11-18): the column reaches the bottom of the window, so there's no room below it;
+// instead its bottom DRAG_EDGE px scroll it down, faster the closer to (or past) the bottom edge.
+const DRAG_EDGE = 50;
 const dragScroll = {
   on: false, x: 0, y: 0, frame: 0,
   tick() {
@@ -3219,9 +3222,14 @@ const dragScroll = {
       return r.width && dragScroll.x >= r.left && dragScroll.x <= r.right;
     });
     const box = col?.querySelector('.cards');
-    if (box && box.scrollTop > 0) {
-      const above = box.getBoundingClientRect().top - dragScroll.y;
-      if (above > 0) box.scrollTop -= Math.min(30, 4 + above / 4);
+    if (box) {
+      const r = box.getBoundingClientRect();
+      const above = r.top - dragScroll.y;
+      const into = dragScroll.y - (r.bottom - DRAG_EDGE);          // how deep into the bottom strip
+      if (above > 0 && box.scrollTop > 0) box.scrollTop -= Math.min(30, 4 + above / 4);
+      else if (into > 0 && box.scrollTop + box.clientHeight < box.scrollHeight - 1) {
+        box.scrollTop += Math.min(30, 4 + into / 3);
+      }
     }
     dragScroll.frame = requestAnimationFrame(dragScroll.tick);
   },
