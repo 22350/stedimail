@@ -3486,11 +3486,32 @@ function bodyFrame(m) {
     class: 'body', title: 'Message',
     sandbox: 'allow-same-origin allow-popups allow-popups-to-escape-sandbox',
   });
+  // Set up (and size) the email as soon as its text is in, not at 'load': 'load' waits for every image,
+  // and a slow ad or tracking server kept the frame a few lines tall for ~20 s (Paul, 2026-11-18).
+  // Images that arrive later refit it (below). Each new srcdoc is a new document, set up once.
+  const done = new WeakSet();
+  let watchUntil = 0;
+  const watch = () => {
+    watchUntil = performance.now() + 15000;
+    const tick = () => {
+      if (setup()) return;
+      if (performance.now() < watchUntil) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
   frame.srcdoc = FRAME_HEAD + content;
-  if (html && /cid:/i.test(content)) withInlineImages(m, content).then((c) => { if (c !== content) frame.srcdoc = FRAME_HEAD + c; });
-  frame.addEventListener('load', () => {
+  watch();
+  if (html && /cid:/i.test(content)) withInlineImages(m, content).then((c) => { if (c !== content) { frame.srcdoc = FRAME_HEAD + c; watch(); } });
+  frame.addEventListener('load', () => { if (!setup()) frame.__fit?.(); });
+  return frame;
+
+  // true once this document is set up; false while it isn't ready yet (or was already set up)
+  function setup() {
     const doc = frame.contentDocument;
-    if (!doc) return;
+    // Before the srcdoc arrives the frame holds an empty about:blank; wait for the email's own document.
+    if (!doc || doc.location.href !== 'about:srcdoc' || doc.readyState === 'loading' || !doc.body) return false;
+    if (done.has(doc)) { frame.__fit?.(); return true; }
+    done.add(doc);
     // Keys pressed inside the email body don't reach the app; pass Esc on so it still closes the email.
     doc.addEventListener('keydown', (e) => { if (e.key === 'Escape') onKey({ key: 'Escape', target: frame }); });
     // Hovering any email address in the message (an email link, or an address typed as plain text)
@@ -3562,8 +3583,9 @@ function bodyFrame(m) {
       const w = doc.documentElement.clientWidth;
       if (w !== lastWidth) { lastWidth = w; fitSoon(); }
     });
-  });
-  return frame;
+    frame.__fit = fitSoon;
+    return true;
+  }
 }
 
 function saveBlob(blob, filename) {

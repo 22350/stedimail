@@ -213,7 +213,7 @@ a.nav-main { color: var(--text); text-decoration: none; }
 .card.new-mail { background: #c62828; border-color: #c62828; color: #fff; }
 .card.new-mail *, .card.new-mail .card-label::placeholder { color: #fff !important; }
 .card.new-mail .nest-toggle { background: #a31f1f; border-top-color: rgba(255,255,255,.5); }
-.card.new-mail .card-actions { background: color-mix(in srgb, #c62828 40%, transparent); }
+.card.new-mail .card-actions { background: transparent; }
 @media (hover: hover) {
   /* the label and hover buttons sit just above the bar */
   .card.has-nest { padding-bottom: calc(36px + .45rem + 34px); }
@@ -239,7 +239,7 @@ a.nav-main { color: var(--text); text-decoration: none; }
 /* A read email's card is grayed down, like Gmail's read rows; unread ones stay white (Paul, 2026-11-16). */
 .card:not(.unread):not(.task-card):not(.selected) { background: var(--col); box-shadow: none; }
 .card:not(.unread):not(.task-card) .people, .card:not(.unread):not(.task-card) .subj { color: var(--muted); }
-.card:not(.unread):not(.task-card):not(.selected) .card-actions { background: var(--col); }
+.card:not(.unread):not(.task-card):not(.selected) .card-actions { background: transparent; }
 /* and its text a little dimmer, 95% (Paul, 2026-11-16); the hover buttons stay full strength */
 .card:not(.unread):not(.task-card) > :not(.card-actions) { opacity: .95; }
 .card.colored { border-left: 6px solid var(--card-color); }
@@ -287,8 +287,8 @@ a.nav-main { color: var(--text); text-decoration: none; }
 .card:hover .card-actions, .card:focus-within .card-actions { display: flex; }
 /* Bigger hover buttons on cards, easier to hit (Paul, 2026-11-03): 34 → 42 px, icons 18 → 23 px */
 .card-actions { gap: .15rem; top: .15rem; right: .2rem; padding: .05rem .1rem .05rem .3rem;
-  /* see-through, so the sender and subject underneath stay readable (Paul, 2026-11-03) */
-  background: color-mix(in srgb, var(--panel) 40%, transparent); }
+  /* no background at all, just the icons (Paul, 2026-11-18; was 40% see-through since 11-03) */
+  background: transparent; }
 .card-actions .icon-btn { opacity: .85; }
 .card-actions .icon-btn:hover:not(:disabled), .card-actions .icon-btn:focus-visible {
   opacity: 1; background: color-mix(in srgb, var(--col) 85%, transparent); }
