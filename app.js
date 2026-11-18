@@ -6039,6 +6039,7 @@ function finishTask(id, done) {
   const said = done ? `Finished: ${t.title}` : `Put back: ${t.title}`;
   saveTasks(said);
   renderTasks();
+  if (!tasks.open) render();   // from a mail column: the finished task leaves it
   taskToast(said);
 }
 
@@ -6270,7 +6271,7 @@ function mailColumnTasks(col) {
 
 // One task card for the mail columns and StediTask (Paul, 2026-11-08): the task's name big on top with the
 // bell and due date, its description below, the people after "CoLab:" one per line, and Delete on the last line.
-// StediTask's cards add the ✓ (finished) at the top right.
+// Both add the ✓ (finished) at the top right.
 // The red ✕ asks first: take the card out of the mail column only (the task stays in StediTask), delete the
 // task everywhere, or cancel (Paul, 2026-11-08). A task already out of the mail just asks to delete.
 async function askDeleteTask(id) {
@@ -6350,9 +6351,12 @@ function taskCardParts(t, { finished = false, finish = null, tagColor = null } =
 }
 
 function renderMailTaskCard(t) {
+  // The green ✓ here too, as on StediTask's cards (Paul, 2026-11-18): finished tasks leave the mail column; Undo brings it back.
+  const finish = el('button', { type: 'button', class: 'task-finish', title: 'Mark finished', 'aria-label': 'Mark finished: ' + t.title }, '✓');
+  finish.addEventListener('click', (e) => { e.stopPropagation(); finishTask(t.id, true); });
   const card = el('article', { class: 'card task-card task-in-mail' + (t.collapsed ? ' collapsed' : ''), tabindex: '0', role: 'button', 'data-task': t.id,
     title: t.collapsed ? 'Double-click to unfold' : 'Double-click to fold to one line',
-    'aria-label': `Task: ${t.title}${t.due ? ', due ' + taskWhenText(t) : ''}. Open it` }, taskCardParts(t));
+    'aria-label': `Task: ${t.title}${t.due ? ', due ' + taskWhenText(t) : ''}. Open it` }, taskCardParts(t, { finish }));
   wireTaskCard(card, t);
   return card;
 }
