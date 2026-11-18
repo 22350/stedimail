@@ -2182,9 +2182,8 @@ function holdSend(send, cancel) {
   Object.assign(sendHold, { run: send, cancel, until: Date.now() + secs * 1000 });
   sendHold.timer = setTimeout(sendHeldNow, secs * 1000);
   const btn = $('#btn-send-undo'), count = btn.querySelector('.count');
-  count.style.minWidth = String(secs).length + 'ch';     // room for "10" from the start: no shrinking at 9
   const show = () => { count.textContent = Math.max(0, Math.ceil((sendHold.until - Date.now()) / 1000)); };
-  btn.hidden = false;
+  btn.classList.add('live'); btn.removeAttribute('aria-hidden'); btn.tabIndex = 0;
   show();
   clearInterval(sendHold.tick);
   sendHold.tick = setInterval(show, 200);
@@ -2193,7 +2192,7 @@ function endHold() {
   const { run, cancel } = sendHold;
   clearTimeout(sendHold.timer); clearInterval(sendHold.tick);
   Object.assign(sendHold, { run: null, cancel: null });
-  $('#btn-send-undo').hidden = true;
+  $('#btn-send-undo').classList.remove('live'); $('#btn-send-undo').setAttribute('aria-hidden', 'true'); $('#btn-send-undo').tabIndex = -1;
   return { run, cancel };
 }
 function sendHeldNow() { endHold().run?.(); }
@@ -7003,6 +7002,12 @@ function wireUi() {
   $('#set-barcolor').addEventListener('input', () => applyBarColor($('#set-barcolor').value));
   $('#set-barcolor-reset').addEventListener('click', () => { $('#set-barcolor').value = DEFAULT_BAR; applyBarColor(DEFAULT_BAR); });
   $('#settings').addEventListener('close', () => applyBarColor(settings.barColor));
+  // A click outside the Settings window closes it, like Cancel (Paul, 2026-11-18). Only a press that starts
+  // outside counts, so dragging out of a text box while selecting doesn't close it.
+  $('#settings').addEventListener('pointerdown', (e) => {
+    const dlg = $('#settings'), r = dlg.getBoundingClientRect();
+    if (e.target === dlg && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dlg.close();
+  });
   // Enter in a column name would otherwise trigger the form's first button (Cancel).
   $('#set-columns').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
   $('#set-add').addEventListener('click', () => {

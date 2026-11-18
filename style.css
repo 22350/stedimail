@@ -1056,13 +1056,14 @@ dialog.ask.near { position: fixed; margin: 0; }
 .first-start strong { font-size: 1.15rem; }
 
 /* Undo send (Paul, 2026-11-18): red and pulsing while an email waits to go, the same size as Feedback,
-   between Feedback and the undo arrow. Hidden, it takes no room: Feedback sits next to the arrow. */
+   between Feedback and the undo arrow. */
 .bar .send-undo { flex: none; white-space: nowrap; font-weight: 600; padding-inline: .5rem;   /* narrower sides (was .9rem) */ color: #fff; background: #d32f2f; border-color: #ff8a80;
   animation: send-undo-pulse 1s ease-in-out infinite; }
 .bar .send-undo:hover:not(:disabled) { background: #ff3b30; border-color: #fff; color: #fff; animation-play-state: paused; }
-.bar .send-undo[hidden] { display: none; }
-/* the number close to the words; its width is set for the starting number, so the button keeps one size counting down */
-.bar .send-undo .count { display: inline-block; margin-left: .2em; text-align: left; font-variant-numeric: tabular-nums; }
+/* Hidden, it still keeps its place, so Feedback stays put and nothing moves when it comes and goes (Paul, 2026-11-18) */
+.bar .send-undo:not(.live) { visibility: hidden; animation: none; pointer-events: none; }
+/* the number close to the words, with room for two digits: the button is always one size, shown or not */
+.bar .send-undo .count { display: inline-block; min-width: 2ch; margin-left: .2em; text-align: left; font-variant-numeric: tabular-nums; }
 @keyframes send-undo-pulse {
   0%, 100% { background: #d32f2f; box-shadow: 0 0 0 0 rgba(255, 82, 82, .7); }
   50% { background: #7f1d1d; box-shadow: 0 0 0 6px rgba(255, 82, 82, 0); }
