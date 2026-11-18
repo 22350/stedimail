@@ -42,7 +42,10 @@ a { color: var(--accent); }
 .bar .status { white-space: nowrap; }
 .bar h1 { font-size: 1.15rem; margin: 0 .895rem 0 .635rem; padding: .57rem 0; line-height: 0; }
 /* The StediMail logo (white), 30% larger again (Paul, 2026-11-04) */
-.bar h1 .logo { display: block; height: 2.35rem; width: auto; }
+.bar h1 .logo { display: block; height: 2.1rem; width: auto; }
+/* Olive logos (Paul, 2026-11-18): each is as tall as its lettering, with the icon (40% smaller) centred beside it,
+   so both logos are the same size and the lettering stays its old size; the bar keeps its height */
+.bar h1 { padding-block: .695rem; }
 .bar .status { color: var(--bar-muted); }
 .bar button {
   background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.22); color: var(--bar-text);
@@ -622,7 +625,7 @@ body.reader-resizing, body.reader-resizing * { cursor: ew-resize !important; use
   .bar { flex-wrap: wrap; row-gap: .5rem; padding: .5rem .75rem; }
   .bar-side { display: contents; }
   .bar h1 { display: block; font-size: 1.05rem; }
-  .bar h1 .logo { height: 2.1rem; }
+  .bar h1 .logo { height: 1.9rem; }
   .bar .status, .bar .spacer { display: none; }
   .bar h1 { margin-right: auto; }
   .bar .search-row-break { display: block; order: 9; flex: 0 0 100%; height: 0; }
