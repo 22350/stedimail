@@ -1055,19 +1055,15 @@ dialog.ask.near { position: fixed; margin: 0; }
   border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,.5); font-size: 1rem; line-height: 1.45; text-align: center; }
 .first-start strong { font-size: 1.15rem; }
 
-/* Undo send (Paul, 2026-11-18): big, red and pulsing just right of the search box while an email waits.
-   Sits over the bar beside the box, so the box doesn't move when it comes and goes. */
-.bar .send-undo { position: absolute; left: calc(100% + 14px); top: 50%; transform: translateY(-50%); z-index: 5;
-  min-width: 190px; height: 48px; min-height: 0; padding: 0 1.2rem; white-space: nowrap;
-  font-size: 1.15rem; font-weight: 700; color: #fff; background: #d32f2f; border: 2px solid #ff8a80; border-radius: 10px;
-  cursor: pointer; animation: send-undo-pulse 1s ease-in-out infinite; }
+/* Undo send (Paul, 2026-11-18): red and pulsing while an email waits to go, the same size as Feedback,
+   between Feedback and the undo arrow. Hidden, it takes no room: Feedback sits next to the arrow. */
+.bar .send-undo { flex: none; white-space: nowrap; font-weight: 600; padding-inline: .5rem;   /* narrower sides (was .9rem) */ color: #fff; background: #d32f2f; border-color: #ff8a80;
+  animation: send-undo-pulse 1s ease-in-out infinite; }
 .bar .send-undo:hover:not(:disabled) { background: #ff3b30; border-color: #fff; color: #fff; animation-play-state: paused; }
 .bar .send-undo[hidden] { display: none; }
-.bar .send-undo .count { display: inline-block; min-width: 1.6ch; margin-left: .35rem; text-align: right; font-variant-numeric: tabular-nums; }
+/* the number close to the words; its width is set for the starting number, so the button keeps one size counting down */
+.bar .send-undo .count { display: inline-block; margin-left: .2em; text-align: left; font-variant-numeric: tabular-nums; }
 @keyframes send-undo-pulse {
   0%, 100% { background: #d32f2f; box-shadow: 0 0 0 0 rgba(255, 82, 82, .7); }
-  50% { background: #7f1d1d; box-shadow: 0 0 0 8px rgba(255, 82, 82, 0); }
-}
-@media (max-width: 1100px) {   /* the search box is on its own row: Undo under it, centered */
-  .bar .send-undo { left: 50%; top: calc(100% + 8px); transform: translateX(-50%); }
+  50% { background: #7f1d1d; box-shadow: 0 0 0 6px rgba(255, 82, 82, 0); }
 }

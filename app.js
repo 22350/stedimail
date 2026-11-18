@@ -2182,9 +2182,10 @@ function holdSend(send, cancel) {
   Object.assign(sendHold, { run: send, cancel, until: Date.now() + secs * 1000 });
   sendHold.timer = setTimeout(sendHeldNow, secs * 1000);
   const btn = $('#btn-send-undo'), count = btn.querySelector('.count');
+  count.style.minWidth = String(secs).length + 'ch';     // room for "10" from the start: no shrinking at 9
   const show = () => { count.textContent = Math.max(0, Math.ceil((sendHold.until - Date.now()) / 1000)); };
-  show();
   btn.hidden = false;
+  show();
   clearInterval(sendHold.tick);
   sendHold.tick = setInterval(show, 200);
 }
@@ -4212,23 +4213,30 @@ function renderReplyBox(last, threadId, draft = null) {
         if (draftId) await api(`/drafts/${draftId}`, { method: 'DELETE' }).catch(() => {});   // gone before the reload below
         if (draft) closeDraftsFolder();
         toast('Reply sent');
-        const showing = rich.editor.isConnected;                    // still on screen (not closed while it waited)
-        if (archiveAfter) { if (showing) closeReader(); await archiveThread(threadId); }
-        else if (showing) openThread(threadId);
+        if (held) { if (archiveAfter) await archiveThread(threadId); }     // the email closed at Send already
+        else if (archiveAfter) { closeReader(); await archiveThread(threadId); } else openThread(threadId);
         loadBoard();
       } catch (e) {
         if (!(e instanceof AuthError)) toast('Send failed: ' + e.message);
-        unlock();
+        if (held) keepAsDraft();                                   // closed already: don't lose it
+        else unlock();
       }
     };
-    if (!undoSendSeconds()) return go();
-    rich.editor.contentEditable = 'false';                         // waiting: the text can't change under it
-    was.textContent = 'Waiting to send…';
-    holdSend(go, () => {
-      unlock();
-      toast(rich.editor.isConnected ? 'Not sent: carry on editing' : 'Not sent: it\'s in your Drafts');
-      if (rich.editor.isConnected) rich.editor.focus();
-    });
+    // With Undo send the email closes at once, as if sent, and waits in memory (no draft saved on the way out).
+    // Undo puts it back as a draft and opens the conversation at it, ready to edit (Paul, 2026-11-18).
+    const keepAsDraft = async () => {
+      try {
+        draftId = await saveDraft(h, c.text, threadId, draftId, { html: c.html, files: c.files });
+        if (draft) closeDraftsFolder();
+        openThread(threadId);
+      } catch (e) { if (!(e instanceof AuthError)) toast('Could not bring the email back: ' + e.message); }
+    };
+    const held = !!undoSendSeconds();
+    if (!held) return go();
+    if (state.replyDraft === me) state.replyDraft = null;           // closing mustn't save it as a draft
+    closeReader();
+    toast('Sending…');
+    holdSend(go, () => { toast('Not sent: opening it again'); keepAsDraft(); });
   };
   sendBtn.addEventListener('click', () => doSend(false));
   sendArchive.addEventListener('click', () => doSend(true));
@@ -4802,22 +4810,30 @@ function openCompose(draft = null) {
         if (draftId) await api(`/drafts/${draftId}`, { method: 'DELETE' }).catch(() => {});   // gone before the reload below
         if (draft) closeDraftsFolder();
         toast('Sent');
-        if (rich.editor.isConnected) closeReader();                // still on screen (not closed while it waited)
+        if (!held) closeReader();
         loadBoard();
       } catch (e) {
         if (!(e instanceof AuthError)) toast('Send failed: ' + e.message);
-        unlock();
+        if (held) keepAsDraft();                                   // closed already: don't lose it
+        else unlock();
       }
     };
-    if (!undoSendSeconds()) return go();
-    rich.editor.contentEditable = 'false';                         // waiting: nothing can change under it
-    fields.forEach((f) => { f.readOnly = true; });
-    send.textContent = 'Waiting to send…';
-    holdSend(go, () => {
-      unlock();
-      toast(rich.editor.isConnected ? 'Not sent: carry on editing' : 'Not sent: it\'s in your Drafts');
-      if (rich.editor.isConnected) rich.editor.focus();
-    });
+    // With Undo send the message closes at once, as if sent, and waits in memory. Undo puts it back as a
+    // draft and opens it again, ready to edit (Paul, 2026-11-18).
+    const keepAsDraft = async () => {
+      try {
+        draftId = await saveDraft(h, c.text, null, draftId, { html: c.html, files: c.files });
+        const d = await api(`/drafts/${draftId}?format=full`);
+        if (draft) closeDraftsFolder();
+        openCompose({ id: draftId, message: d.message });
+      } catch (e) { if (!(e instanceof AuthError)) toast('Could not bring the message back: ' + e.message); }
+    };
+    const held = !!undoSendSeconds();
+    if (!held) return go();
+    if (state.replyDraft === me) state.replyDraft = null;           // closing mustn't save it as a draft
+    closeReader();
+    toast('Sending…');
+    holdSend(go, () => { toast('Not sent: opening it again'); keepAsDraft(); });
   });
   const reader = $('#reader');
   const dictation = dictationTools(rich.editor);
