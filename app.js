@@ -2162,6 +2162,44 @@ const b64Part = (type, text) => [`Content-Type: ${type}; charset=UTF-8`, 'Conten
   wrap76(bytesToB64(utf8(text.replace(/\r?\n/g, '\r\n'))))].join('\r\n');
 
 // Plain text, or (with html / files) multipart: text + HTML alternatives, plus attachments.
+// ---- Undo send (Paul, 2026-11-18) ----
+// Gmail's own Undo Send only works on Gmail's website: emails sent through Google's API (as StediMail does)
+// go at once. So StediMail holds the email itself: after Send, a big red pulsing Undo button counts down to
+// the right of the search box, and the email goes only when it reaches 0. Settings: Off or 5/10/20/30 s.
+const UNDO_SEND_CHOICES = [0, 5, 10, 20, 30];
+const UNDO_SEND_DEFAULT = 10;
+function undoSendSeconds() {
+  const n = Number(store.get('undoSend', UNDO_SEND_DEFAULT));
+  return UNDO_SEND_CHOICES.includes(n) ? n : UNDO_SEND_DEFAULT;
+}
+const sendHold = { timer: 0, tick: 0, until: 0, run: null, cancel: null };
+// Run send() after the undo time unless Undo is clicked first (then cancel()). Off: send() right away.
+// One at a time: holding a new email sends the waiting one now.
+function holdSend(send, cancel) {
+  const secs = undoSendSeconds();
+  if (!secs) return send();
+  if (sendHold.run) sendHeldNow();
+  Object.assign(sendHold, { run: send, cancel, until: Date.now() + secs * 1000 });
+  sendHold.timer = setTimeout(sendHeldNow, secs * 1000);
+  const btn = $('#btn-send-undo'), count = btn.querySelector('.count');
+  const show = () => { count.textContent = Math.max(0, Math.ceil((sendHold.until - Date.now()) / 1000)); };
+  show();
+  btn.hidden = false;
+  clearInterval(sendHold.tick);
+  sendHold.tick = setInterval(show, 200);
+}
+function endHold() {
+  const { run, cancel } = sendHold;
+  clearTimeout(sendHold.timer); clearInterval(sendHold.tick);
+  Object.assign(sendHold, { run: null, cancel: null });
+  $('#btn-send-undo').hidden = true;
+  return { run, cancel };
+}
+function sendHeldNow() { endHold().run?.(); }
+function undoHeldSend() { endHold().cancel?.(); }
+// Closing StediMail while an email waits would lose it: the browser asks first.
+addEventListener('beforeunload', (e) => { if (sendHold.run) { e.preventDefault(); e.returnValue = ''; } });
+
 async function sendMail(headers, body, threadId, opts = {}) {
   const mime = await buildMime(headers, body, opts);
   if (mime.length < 4.5e6) {
@@ -4159,22 +4197,38 @@ function renderReplyBox(last, threadId, draft = null) {
     if (rich.notReady()) { toast(rich.notReady()); return; }
     sendBtn.disabled = sendArchive.disabled = true;
     const was = archiveAfter ? sendArchive : sendBtn, label = was.textContent;
-    was.textContent = 'Sending…';
-    try {
-      const c = rich.content(), h = replyHeaders(last, replyAll);
-      await shareDriveFiles(rich.driveIds(), h);
-      await sendMail(h, c.text, threadId, { html: c.html, files: c.files });
-      if (state.replyDraft === me) state.replyDraft = null;      // sent: nothing to keep
-      if (draftId) await api(`/drafts/${draftId}`, { method: 'DELETE' }).catch(() => {});   // gone before the reload below
-      if (draft) closeDraftsFolder();
-      toast('Reply sent');
-      if (archiveAfter) { closeReader(); await archiveThread(threadId); } else openThread(threadId);
-      loadBoard();
-    } catch (e) {
-      if (!(e instanceof AuthError)) toast('Send failed: ' + e.message);
+    const c = rich.content(), h = replyHeaders(last, replyAll);   // what was there when Send was clicked
+    const unlock = () => {
+      rich.editor.contentEditable = 'true';
       sendBtn.disabled = sendArchive.disabled = false;
       was.textContent = label;
-    }
+    };
+    const go = async () => {
+      was.textContent = 'Sending…';
+      try {
+        await shareDriveFiles(rich.driveIds(), h);
+        await sendMail(h, c.text, threadId, { html: c.html, files: c.files });
+        if (state.replyDraft === me) state.replyDraft = null;      // sent: nothing to keep
+        if (draftId) await api(`/drafts/${draftId}`, { method: 'DELETE' }).catch(() => {});   // gone before the reload below
+        if (draft) closeDraftsFolder();
+        toast('Reply sent');
+        const showing = rich.editor.isConnected;                    // still on screen (not closed while it waited)
+        if (archiveAfter) { if (showing) closeReader(); await archiveThread(threadId); }
+        else if (showing) openThread(threadId);
+        loadBoard();
+      } catch (e) {
+        if (!(e instanceof AuthError)) toast('Send failed: ' + e.message);
+        unlock();
+      }
+    };
+    if (!undoSendSeconds()) return go();
+    rich.editor.contentEditable = 'false';                         // waiting: the text can't change under it
+    was.textContent = 'Waiting to send…';
+    holdSend(go, () => {
+      unlock();
+      toast(rich.editor.isConnected ? 'Not sent: carry on editing' : 'Not sent: it\'s in your Drafts');
+      if (rich.editor.isConnected) rich.editor.focus();
+    });
   };
   sendBtn.addEventListener('click', () => doSend(false));
   sendArchive.addEventListener('click', () => doSend(true));
@@ -4731,22 +4785,39 @@ function openCompose(draft = null) {
     if (!to.value.trim()) { to.focus(); return; }
     if (rich.notReady()) { toast(rich.notReady()); return; }
     send.disabled = true;
-    send.textContent = 'Sending…';
-    try {
-      const c = rich.content();
-      await shareDriveFiles(rich.driveIds(), headers());
-      await sendMail(headers(), c.text, null, { html: c.html, files: c.files });
-      if (state.replyDraft === me) state.replyDraft = null;      // sent: nothing to keep
-      if (draftId) await api(`/drafts/${draftId}`, { method: 'DELETE' }).catch(() => {});   // gone before the reload below
-      if (draft) closeDraftsFolder();
-      toast('Sent');
-      closeReader();
-      loadBoard();
-    } catch (e) {
-      if (!(e instanceof AuthError)) toast('Send failed: ' + e.message);
+    const c = rich.content(), h = headers();                      // what was there when Send was clicked
+    const fields = [to, subject];
+    const unlock = () => {
+      rich.editor.contentEditable = 'true';
+      fields.forEach((f) => { f.readOnly = false; });
       send.disabled = false;
       send.textContent = 'Send';
-    }
+    };
+    const go = async () => {
+      send.textContent = 'Sending…';
+      try {
+        await shareDriveFiles(rich.driveIds(), h);
+        await sendMail(h, c.text, null, { html: c.html, files: c.files });
+        if (state.replyDraft === me) state.replyDraft = null;      // sent: nothing to keep
+        if (draftId) await api(`/drafts/${draftId}`, { method: 'DELETE' }).catch(() => {});   // gone before the reload below
+        if (draft) closeDraftsFolder();
+        toast('Sent');
+        if (rich.editor.isConnected) closeReader();                // still on screen (not closed while it waited)
+        loadBoard();
+      } catch (e) {
+        if (!(e instanceof AuthError)) toast('Send failed: ' + e.message);
+        unlock();
+      }
+    };
+    if (!undoSendSeconds()) return go();
+    rich.editor.contentEditable = 'false';                         // waiting: nothing can change under it
+    fields.forEach((f) => { f.readOnly = true; });
+    send.textContent = 'Waiting to send…';
+    holdSend(go, () => {
+      unlock();
+      toast(rich.editor.isConnected ? 'Not sent: carry on editing' : 'Not sent: it\'s in your Drafts');
+      if (rich.editor.isConnected) rich.editor.focus();
+    });
   });
   const reader = $('#reader');
   const dictation = dictationTools(rich.editor);
@@ -4856,6 +4927,7 @@ function applyBarColor(hex) {
 
 function openSettings() {
   $('#set-barcolor').value = settings.barColor || DEFAULT_BAR;
+  $('#set-undosend').value = String(undoSendSeconds());
   $('#set-columns').replaceChildren(
     columnRow(settings.inboxName, null, true),
     ...settings.columns.map((n) => columnRow(n, n)),
@@ -6901,6 +6973,7 @@ function wireUi() {
     }
     settings.barColor = $('#set-barcolor').value.toLowerCase() === DEFAULT_BAR ? null : $('#set-barcolor').value;
     store.set('barColor', settings.barColor);
+    store.set('undoSend', Number($('#set-undosend').value));
     store.set('stediTaskLink', $('#set-steditask').checked);
     const gWas = gtasksOn();
     store.set('gtasksLink', $('#set-gtasks').checked);
@@ -6935,6 +7008,7 @@ function wireUi() {
   });
   document.addEventListener('keydown', onKey);
   $('#btn-undo').addEventListener('click', undoLast);
+  $('#btn-send-undo').addEventListener('click', undoHeldSend);
   $('#btn-redo').addEventListener('click', redoLast);
   for (const b of document.querySelectorAll('#task-views button')) b.addEventListener('click', () => setTaskView(b.dataset.view));
   $('#task-search').addEventListener('input', () => renderTasks());

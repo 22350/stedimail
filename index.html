@@ -9,9 +9,9 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=20261118151138">
+<link rel="stylesheet" href="style.css?v=20261118151908">
 <script src="https://accounts.google.com/gsi/client" async></script>
-<script src="app.js?v=20261118151138" defer></script>
+<script src="app.js?v=20261118151908" defer></script>
 </head>
 <body>
 <header class="bar">
@@ -27,6 +27,7 @@
   <div class="search-row-break"></div>
   <form id="search-form" class="search-box" role="search" hidden>
     <input id="search" type="search" placeholder="Search mail" autocomplete="off">
+    <button id="btn-send-undo" class="send-undo" type="button" hidden aria-label="Undo send">Undo send <span class="count"></span></button>
   </form>
   <div id="task-search-box" class="search-box task-search-box" role="search"><input id="task-search" type="search" placeholder="Search tasks" aria-label="Search tasks" autocomplete="off"></div>
   <div class="bar-side">
@@ -94,6 +95,17 @@
       <span>Snooze on time (optional)</span>
       <p class="hint">StediMail brings snoozed emails back whenever it's open. To have them come back on time even when it's closed (e.g. on your phone): click <b>Copy helper script</b>, open <b>Google Apps Script</b>, make a new project, paste over everything, save, then choose <b>install</b> in the toolbar and click <b>Run</b> (allow access when Google asks). Once is enough.</p>
       <div class="color-row"><button type="button" id="set-snooze-copy">Copy helper script</button><a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">Open Google Apps Script</a></div>
+    </div>
+    <div class="field">
+      <span>Undo send</span>
+      <select id="set-undosend" aria-label="Undo send time">
+        <option value="0">Off: send at once</option>
+        <option value="5">5 seconds</option>
+        <option value="10">10 seconds</option>
+        <option value="20">20 seconds</option>
+        <option value="30">30 seconds</option>
+      </select>
+      <p class="hint">After you click Send, a red Undo button counts down to the right of the search box; the email goes when it reaches 0. Gmail's own Undo Send setting only works on Gmail's website, so StediMail has its own.</p>
     </div>
     <div class="field">
       <span>Title bar color</span>
