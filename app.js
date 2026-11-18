@@ -4382,7 +4382,7 @@ function renderUnsubscribe(msgs, threadId) {
   const asked = unsubscribedOn()[addr];
   const btn = el('button', { type: 'button', class: 'unsub-btn' }, asked ? `Unsubscribe again (asked ${asked})` : 'Unsubscribe');
   btn.addEventListener('click', async () => {
-    if (!await askConfirm(`Unsubscribe from ${name}?\n\nThey should stop sending these emails (some take a few days), and this email goes to Trash.`, 'Unsubscribe')) return;
+    if (!await askConfirm(`Unsubscribe from ${name}?\n\nThey should stop sending these emails (some take a few days), and this email goes to Trash.`, 'Unsubscribe', { near: { x: pointer.x, y: pointer.y } })) return;   // just below the pointer (Paul, 2026-11-18)
     let done = '';
     try {
       if (u.oneClick) {
