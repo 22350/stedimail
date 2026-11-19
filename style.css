@@ -1352,4 +1352,4 @@ dialog.sig-designer .sig-textbar > .sig-align::before { content: ''; position: a
 .reply-ccbcc { min-height: 30px; padding: 0 .55rem; border: 0; background: transparent; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
 .reply-ccbcc:hover { color: var(--text); background: transparent; }
 .reply-ccbcc[hidden] { display: none; }
-.unsub-done { margin-left: 10px; color: var(--muted); opacity: .6; font-size: .9rem; font-weight: 400; }   /* very light (Paul, 2026-11-19) */
+.unsub-done { margin-left: 10px; color: var(--muted); opacity: .6; font-size: 1.1rem; font-weight: 400; }   /* very light (Paul, 2026-11-19) */

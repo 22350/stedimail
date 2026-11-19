@@ -4629,6 +4629,7 @@ function renderUnsubscribe(msgs, threadId) {
   const asked = unsubscribedOn()[addr];
   const btn = el('button', { type: 'button', class: 'unsub-btn' }, asked ? `Unsubscribe again (asked ${asked})` : 'Unsubscribe');
   btn.addEventListener('click', async () => {
+    if (btn.dataset.done) return;
     if (!await askConfirm(`Unsubscribe from ${name}?\n\nThey should stop sending these emails (some take a few days), and this email goes to Trash.`, 'Unsubscribe', { near: { x: pointer.x, y: pointer.y } })) return;   // just below the pointer (Paul, 2026-11-18)
     let done = '', quiet = false;
     try {
@@ -4647,8 +4648,8 @@ function renderUnsubscribe(msgs, threadId) {
       const all = unsubscribedOn();
       all[addr] = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       store.set('unsubscribed', all);
-      btn.textContent = 'Unsubscribe requested';
-      btn.disabled = true;
+      // The button stays as it is (Paul, 2026-11-19); a second press just does nothing.
+      btn.dataset.done = '1';
       // Done quietly: a light "Done!!" just right of the button for a moment (Paul, 2026-11-19), then the email
       // goes to Trash too (Paul, 2026-11-03); Undo brings the email back.
       if (quiet) { btn.after(el('span', { class: 'unsub-done', role: 'status' }, 'Done!!')); await new Promise((r) => setTimeout(r, 2000)); }
