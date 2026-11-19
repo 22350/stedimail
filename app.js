@@ -2643,10 +2643,11 @@ function textDictation(box) {
       if (!box.isConnected) { rec?.abort(); return; }
       for (let i = e.resultIndex; i < e.results.length; i++) {
         if (!e.results[i].isFinal) continue;
-        const said = e.results[i][0].transcript.trim();
         const at = box.selectionStart ?? box.value.length, end = box.selectionEnd ?? at;
         const pre = box.value.slice(0, at), post = box.value.slice(end);
-        const text = (pre && !/\s$/.test(pre) ? ' ' : '') + said + (post && !/^\s/.test(post) ? ' ' : '');
+        const said = spokenPunctuation(e.results[i][0].transcript, endsSentence(pre));   // "comma", "new line"… (Paul, 2026-11-18)
+        if (!said) continue;
+        const text = (pre && !/\s$/.test(pre) && !/^[.,?!;:\n]/.test(said) ? ' ' : '') + said + (post && !/^\s/.test(post) && !/\n$/.test(said) ? ' ' : '');
         box.setRangeText(text, at, end, 'end');
         box.dispatchEvent(new Event('input', { bubbles: true }));
       }
@@ -4119,6 +4120,26 @@ function richEditor(placeholder, changed) {
 // click or when the browser hears silence, so the microphone never stays on unattended. Browsers without
 // speech recognition (Firefox) get no buttons. There are two: a small one in the toolbar, always there, and
 // a big one centered in an empty editor, which goes away at a touch anywhere else in the reply window.
+// Spoken punctuation (Paul, 2026-11-18): "how are you question mark" types "how are you?", and "new line" /
+// "new paragraph" start a new line or paragraph, instead of typing the words out. The mark joins the word
+// before it; a sentence's first word gets a capital. afterStop: what's already there ends a sentence (or is empty).
+const SPOKEN_MARKS = [
+  [/\s*\bnew paragraph\b\s*/gi, '\n\n'], [/\s*\bnew ?line\b\s*/gi, '\n'],
+  [/\s*\bquestion mark\b/gi, '?'], [/\s*\bexclamation (?:point|mark)\b/gi, '!'],
+  [/\s*\bfull stop\b/gi, '.'],
+  // "period" is also a plain word: not after the, a, trial, grace… ("the trial period ends")
+  [/\s*(?<!\b(?:the|a|an|this|that|each|per|same|one|trial|grace|waiting|time|billing|pay|notice|holiday|probation|cooling[- ]off|free|rest|test|sample)\s)\bperiod\b/gi, '.'], [/\s*\bcomma\b/gi, ','], [/\s*\bsemicolon\b/gi, ';'], [/\s*\bcolon\b/gi, ':'],
+];
+function spokenPunctuation(said, afterStop) {
+  let t = said.trim();
+  for (const [re, mark] of SPOKEN_MARKS) t = t.replace(re, mark);
+  t = t.replace(/([.?!])(\p{L})/gu, '$1 $2')                                  // "you?fine" → "you? fine"
+    .replace(/([.?!]\s+|\n)(\p{Ll})/gu, (m, a, b) => a + b.toUpperCase());   // a new sentence or line starts with a capital
+  if (afterStop) t = t.replace(/^(\p{Ll})/u, (m) => m.toUpperCase());
+  return t;
+}
+const endsSentence = (text) => !text.trim() || /[.?!\n]\s*$/.test(text);
+
 function dictationTools(editor) {
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Recognition) return { toolbar: null, center: null, dismiss() {} };
@@ -4142,8 +4163,15 @@ function dictationTools(editor) {
     after.selectNodeContents(editor);
     after.setStart(sel.focusNode, sel.focusOffset);
     const gap = (side, test) => (side.toString() && !test.test(side.toString()) ? ' ' : '');
+    const said = spokenPunctuation(text, endsSentence(before.toString()));
+    if (!said) return;
+    const lead = /^[.,?!;:\n]/.test(said) ? '' : gap(before, /\s$/);          // a mark or new line joins what's before
     byVoice = true;   // this typing is the microphone's, not the person's
-    document.execCommand('insertText', false, gap(before, /\s$/) + text.trim() + gap(after, /^\s/));
+    const parts = (lead + said + (/\n$/.test(said) ? '' : gap(after, /^\s/))).split(/(\n)/);
+    for (const part of parts) {
+      if (part === '\n') document.execCommand('insertLineBreak');
+      else if (part) document.execCommand('insertText', false, part);
+    }
     byVoice = false;
   };
   const problems = {
