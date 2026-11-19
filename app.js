@@ -1634,6 +1634,7 @@ function askConfirm(message, okLabel = 'OK', { cancelLabel = 'Cancel', danger = 
     cancel.addEventListener('click', () => finish(false));
     ok.addEventListener('click', () => { if (!ok.disabled) finish(true); });
     dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(false); });
+    dlg.addEventListener('close', () => finish(false));   // Chrome closes it itself on a repeated Esc, with no 'cancel'
     dlg.addEventListener('click', (e) => { if (e.target === dlg) finish(false); });   // the backdrop
     document.body.append(dlg);
     dlg.showModal();
@@ -2240,9 +2241,28 @@ async function buildMime(headers, body, { html, files = [] } = {}) {
   lines.push('MIME-Version: 1.0');
   let content = b64Part('text/plain', body);
   if (html) {
+    // Pictures held inside the HTML (a designed signature's, 2026-11-19) go as inline parts the HTML points at
+    // ("cid:"), because Gmail and most mail programs don't show pictures held inside an email's HTML.
+    const inline = [];
+    html = html.replace(/src="data:(image\/[a-z0-9.+-]+);base64,([^"]+)"/gi, (m, type, data) => {
+      let n = inline.findIndex((x) => x.data === data);
+      if (n < 0) { n = inline.length; inline.push({ type, data }); }
+      return `src="cid:pic${n}@stedimail"`;
+    });
     const alt = 'alt' + Math.random().toString(36).slice(2);
     content = [`Content-Type: multipart/alternative; boundary="${alt}"`, '', `--${alt}`, b64Part('text/plain', body),
       `--${alt}`, b64Part('text/html', `<div dir="ltr">${html}</div>`), `--${alt}--`].join('\r\n');
+    if (inline.length) {
+      const rel = 'rel' + Math.random().toString(36).slice(2);
+      const parts = [`Content-Type: multipart/related; boundary="${rel}"`, '', `--${rel}`, content];
+      inline.forEach((x, n) => {
+        const ext = x.type.split('/')[1].replace('jpeg', 'jpg').replace(/\+.*/, '');
+        parts.push(`--${rel}`, `Content-Type: ${x.type}; name="picture${n + 1}.${ext}"`, `Content-ID: <pic${n}@stedimail>`,
+          `Content-Disposition: inline; filename="picture${n + 1}.${ext}"`, 'Content-Transfer-Encoding: base64', '', wrap76(x.data.replace(/\s+/g, '')));
+      });
+      parts.push(`--${rel}--`);
+      content = parts.join('\r\n');
+    }
   }
   if (files.length) {
     const mix = 'mix' + Math.random().toString(36).slice(2);
@@ -2518,6 +2538,8 @@ function el(tag, attrs = {}, children = []) {
 
 const ICONS = {
   play: 'M8 5v14l11-7z',
+  grip: 'M7.1 6a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0M7.1 12a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0M7.1 18a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0M13.1 6a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0M13.1 12a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0M13.1 18a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0',   // six dots, drawn so they sit in the middle of the move button (2026-11-19)
+  lineSpacing: 'M6 7h2.5L5 3.5 1.5 7H4v10H1.5L5 20.5 8.5 17H6V7zm4-2v2h12V5H10zm0 14h12v-2H10v2zm0-6h12v-2H10v2z',
   check: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
   sort: 'M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z',
   mic: 'M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z',
@@ -2544,6 +2566,11 @@ const ICONS = {
   label: 'M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16zM16 17H5V7h11l3.55 5L16 17z',
   spam: 'M15.73 3H8.27L3 8.27v7.46L8.27 21h7.46L21 15.73V8.27L15.73 3zM12 17.3c-.72 0-1.3-.58-1.3-1.3 0-.72.58-1.3 1.3-1.3.72 0 1.3.58 1.3 1.3 0 .72-.58 1.3-1.3 1.3zm1-4.3h-2V7h2v6z',
   palette: 'M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z',
+  sigPhone: 'M6.54 5c.06.89.21 1.76.45 2.59l-1.2 1.2c-.41-1.2-.67-2.47-.76-3.79h1.51m9.86 12.02c.85.24 1.72.39 2.6.45v1.49c-1.32-.09-2.59-.35-3.8-.75l1.2-1.19M7.5 3H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.49c0-.55-.45-1-1-1-1.24 0-2.45-.2-3.57-.57-.1-.04-.21-.05-.31-.05-.26 0-.51.1-.71.29l-2.2 2.2c-2.83-1.45-5.15-3.76-6.59-6.59l2.2-2.2c.28-.28.36-.67.25-1.02C8.7 6.45 8.5 5.25 8.5 4c0-.55-.45-1-1-1z',
+  sigEmail: 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l8 5 8-5v10zm-8-7L4 6h16l-8 5z',
+  sigAddress: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zM7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 2.88-2.88 7.19-5 9.88C9.92 16.21 7 11.85 7 9zm5 2.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+  sigWeb: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.91 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.9-4.33-3.56zm2.95-8H5.08c.96-1.66 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.65-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z',
+  sigNumber: 'M20 10V8h-4V4h-2v4h-4V4H8v4H4v2h4v4H4v2h4v4h2v-4h4v4h2v-4h4v-2h-4v-4h4zm-6 4h-4v-4h4v4z',
   clip: 'M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z',
 };
 
@@ -3396,9 +3423,9 @@ function renderCard(t, colIdx) {
     card.addEventListener('click', (e) => {
       if (e.target.closest('button, input, a')) return;
       if (timer) { clearTimeout(timer); timer = null; toggleNest(t.id); return; }
-      timer = setTimeout(() => { timer = null; openThread(t.id); }, DOUBLE_CLICK_MS);
+      timer = setTimeout(() => { timer = null; leaveThen(() => openThread(t.id))(); }, DOUBLE_CLICK_MS);
     });
-  } else card.addEventListener('click', () => openThread(t.id));
+  } else card.addEventListener('click', leaveThen(() => openThread(t.id)));
   return card;
 }
 
@@ -3761,7 +3788,7 @@ function openDownloads(anchor) {
     ]);
     name.addEventListener('click', () => openDownload(d));
     const open = el('button', { type: 'button', class: 'open-email', title: 'Open its email', 'aria-label': `Open the email with ${d.filename}` }, icon('mail'));
-    open.addEventListener('click', () => openThread(d.threadId));
+    open.addEventListener('click', leaveThen(() => openThread(d.threadId)));
     menu.append(el('div', { class: 'row' }, [name, open]));
   }
   document.body.append(menu);
@@ -3972,6 +3999,35 @@ function cleanHtml(html) {
 
 // Unsent reply text is kept as a Gmail draft on the thread when the email is closed (Esc, ✕, or
 // opening another email), and comes back in the reply box when it's reopened.
+// Leaving an email being written (✕, Esc, another card, New email, StediTask) asks first, just below the
+// pointer, instead of quietly saving a draft (Paul, 2026-11-19). Esc or a click outside the box = keep writing.
+let askingToLeave = false;   // one question at a time (a bounced Esc or double click)
+async function okToLeaveWriting() {
+  const d = state.replyDraft;
+  if (!d?.pending?.()) return true;
+  if (askingToLeave) return false;
+  const saved = d.hasDraft?.();
+  askingToLeave = true;
+  // Simple, the same every time (Paul, 2026-11-19): Yes saves it to Drafts, No throws it away (a draft saved
+  // earlier is deleted too). Esc or a click outside the box: neither, the email stays open.
+  // Styled like the other warnings (plain No, red Yes), the question on the right above them (Paul, 2026-11-19).
+  const choice = await askChoice('Save to drafts?', [['keep', null], ['discard', 'No'], ['save', 'Yes', 'danger']],
+    1, { near: { x: pointer.x, y: pointer.y }, right: true }).finally(() => { askingToLeave = false; });
+  if (choice === 'keep') return false;
+  if (choice === 'discard') {
+    if (state.replyDraft === d) state.replyDraft = null;                         // closing then saves nothing
+    if (saved) {
+      // Gone everywhere: the Drafts column closes, and the board, label columns and sidebar counts are read
+      // again without it (Paul, 2026-11-19).
+      closeDraftsFolder();
+      d.discard().then(() => { toast('Draft deleted'); loadBoard(); },
+        (e) => { if (!(e instanceof AuthError)) toast('Could not delete the draft: ' + e.message); });
+    }
+  }
+  return true;
+}
+const leaveThen = (fn) => async () => { if (await okToLeaveWriting()) fn(); };
+
 async function flushReplyDraft() {
   const d = state.replyDraft;
   state.replyDraft = null;
@@ -4068,12 +4124,18 @@ function richEditor(placeholder, changed) {
   const sigBtn = tool('Signature', 'Signature', async () => {
     const sigs = await loadSignatures();
     const has = !!editor.querySelector('[data-signature]');
+    // The signature designed in StediMail, offered right here (Paul, 2026-11-19). Switched off the same day, for
+    // now: the goal is a signature saved in Gmail that works in Gmail itself, for company users. Set to
+    // sigDesigned() to bring it back.
+    const mine = SIG_OFFER_DESIGNED ? sigDesigned() : null;
     openMenu(sigBtn, [
-      ...(sigs.length ? [{ heading: has ? 'Put back at the end' : 'Add a signature' }] : []),
+      ...(sigs.length || mine ? [{ heading: has ? 'Put back at the end' : 'Add a signature' }] : []),
+      ...(mine ? [{ label: 'Signature designed in StediMail', run: async () => putSignature(sigHtml(mine, await sigIconsReady())) }] : []),
       ...sigs.map((x) => ({ label: sigs.length === 1 ? (has ? 'Put signature back at the end' : 'Add signature') : x.address, run: () => putSignature(x.html) })),
       ...(has ? [{ label: 'Remove signature from this message', run: () => { editor.querySelector('[data-signature]')?.remove(); changed(); } }] : []),
-      ...(sigs.length || has ? [{ sep: true }] : []),
-      { label: sigs.length ? 'Change signatures in Gmail…' : 'No signature yet: set one up in Gmail…', run: openGmailSignatures },
+      ...(sigs.length || mine || has ? [{ sep: true }] : []),
+      { label: mine ? 'Change the designed signature…' : 'Design a signature…', run: openSignatureDesigner },
+      { label: sigs.length ? 'Change signatures in Gmail…' : mine ? 'Set up a signature in Gmail…' : 'No signature yet: set one up in Gmail…', run: openGmailSignatures },
     ]);
   }, 'word');
   const formatTools = [
@@ -4238,6 +4300,7 @@ function renderReplyBox(last, threadId, draft = null) {
     if (rich.isEmpty()) { rich.editor.focus(); return; }
     if (rich.notReady()) { toast(rich.notReady()); return; }
     sendBtn.disabled = sendArchive.disabled = true;
+    if (draft || draftId) closeDraftsFolder();      // the draft is done: Drafts closes at Send, not after Undo's wait (Paul, 2026-11-19)
     const was = archiveAfter ? sendArchive : sendBtn, label = was.textContent;
     const c = rich.content(), h = replyHeaders(last, replyAll);   // what was there when Send was clicked
     const unlock = () => {
@@ -4289,6 +4352,10 @@ function renderReplyBox(last, threadId, draft = null) {
   }
   const me = {
     threadId,
+    pending: () => !!draftId || (dirty && !rich.isEmpty()),   // a saved draft always asks (Paul, 2026-11-19)
+    changed: () => dirty,
+    hasDraft: () => !!draftId,
+    async discard() { if (draftId) await api(`/drafts/${draftId}`, { method: 'DELETE' }); draftId = null; },
     async save() {
       if (!dirty) return;
       if (rich.isEmpty()) {                                    // emptied: drop the old draft
@@ -4590,7 +4657,7 @@ function readerHead(title) {
   x.innerHTML = '<path d="M5 5l14 14M19 5L5 19"/>';
   const close = el('button', { type: 'button', class: 'reader-close', title: 'Close (Esc)', 'aria-label': 'Close' },
     [x, el('kbd', { class: 'esc-hint' }, 'ESC')]);
-  close.addEventListener('click', closeReader);
+  close.addEventListener('click', leaveThen(closeReader));   // asks first while writing (2026-11-19)
   return el('div', { class: 'reader-head' }, [el('h2', {}, title), widenButton(), close]);
 }
 
@@ -4724,6 +4791,977 @@ function openGmailSignatures() {
   toast('Signatures are near the bottom of Gmail\u2019s General settings. Change them there, then pick one here.');
 }
 
+// ---- Signature designer (Paul, 2026-11-18) ----
+// The signature's area is cut into boxes by lines. Every line is in sections between its joints, and each
+// section moves on its own; a box can also be split side by side or top and bottom; the bottom edge is a footer
+// line, dragged up for a footer across the whole width. Pieces (Picture, Link, Text, Divider line, contact lines)
+// are dragged with the pointer (or clicked) from the bar on the right into a box, where they stack and are
+// aligned. The big Copy button copies it as an email-ready table and opens Gmail's signature settings to paste
+// it. The design is kept in this browser. Pictures go in as part of the signature for now: whether Gmail keeps
+// them on paste is Paul's test (if not, put them in Drive).
+const SIG_W = 600, SIG_H = 240;
+const SIG_SIZES = { t: 9, s: 11, m: 13, l: 16, xl: 20, j: 26 };   // Tiny, Small, Normal, Large, Extra large, Jumbo (Paul, 2026-11-19), in px
+const SIG_PX_MIN = 8, SIG_PX_MAX = 40;
+// Contact lines (Paul, 2026-11-18): a line of text with a small gray icon in front. Email and website lines
+// become links in the copied signature.
+const SIG_LINES = {
+  phone: { icon: 'sigPhone', label: 'Phone', hint: 'Phone number' },
+  email: { icon: 'sigEmail', label: 'Email', hint: 'Email address' },
+  address: { icon: 'sigAddress', label: 'Address', hint: 'Address' },
+  web: { icon: 'sigWeb', label: 'Website', hint: 'Website' },
+  number: { icon: 'sigNumber', label: 'Number', hint: 'License or ID number' },
+};
+// The icons as small pictures for the copied signature (emails can't carry the app's drawn icons). Made once.
+let sigIconPngs = null;
+let sigIconCache = {};          // the same, once made (for counting a signature's length)
+function sigIconsReady() {
+  sigIconPngs ||= Promise.all(Object.entries(SIG_LINES).map(([kind, x]) => new Promise((res) => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48"><path fill="#6b6f76" d="${ICONS[x.icon]}"/></svg>`;
+    const img = new Image();
+    img.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 48; c.getContext('2d').drawImage(img, 0, 0, 48, 48); res([kind, c.toDataURL('image/png')]); };
+    img.onerror = () => res([kind, null]);
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }))).then(Object.fromEntries);
+  return sigIconPngs;
+}
+// The layout (Paul, 2026-11-19: "make the lines simple again"): one up-and-down line (vx) in one piece, from the top
+// to the footer line; a line across each side (hyL, hyR), stopping at the up-and-down line; and the footer line
+// (hf) across the whole width along the bottom, dragged up for a footer. All as fractions of the signature's width
+// or height; a line at an edge (or a side line at the footer line) means that box isn't there. Up to five boxes:
+// tl, bl (left top and bottom), tr, br (right), ft (footer). The rectangles the rest of the designer and the
+// copied signature work from (d.rects) are made from these lines.
+const SIG_MIN = .06;                                       // the smallest a box may be, as a fraction
+const SIG_EDGE = .04;                                      // let go this near an edge and the line goes to it
+const SIG_KEYS = ['tl', 'bl', 'tr', 'br', 'ft', 'tle', 'ble', 'tre', 'bre'];   // tle…: the extra box cut from tl…
+const sigNear = (a, b) => Math.abs(a - b) < 1e-4;
+const sigR4 = (v) => Math.round(v * 1e4) / 1e4;
+// vxB (2026-11-19): the up-and-down line below the side lines, when it's split there. Only while the two side
+// lines are level (they then move as one line, hy), so every box stays a rectangle.
+const sigSplitAt = (L) => {
+  const h = Math.min(L.hyL, L.hf);
+  return L.vxB != null && Math.abs(L.vxB - L.vx) > 1e-4 && Math.abs(Math.min(L.hyR, L.hf) - h) < 1e-4 && h > 0 && h < L.hf ? h : null;
+};
+function sigLayRects(L) {
+  const rects = [], hf = L.hf, h = sigSplitAt(L);
+  const colsAt = (vx) => vx <= 0 ? [['r', 0, 1]] : vx >= 1 ? [['l', 0, 1]] : [['l', 0, vx], ['r', vx, 1]];
+  if (h != null) {
+    for (const [c, x0, x1] of colsAt(L.vx)) rects.push({ x0, x1, y0: 0, y1: h, g: 't' + c });
+    for (const [c, x0, x1] of colsAt(L.vxB)) rects.push({ x0, x1, y0: h, y1: hf, g: 'b' + c });
+  } else if (hf > 0) for (const [c, x0, x1] of colsAt(L.vx)) {
+    const seg = Math.min(c === 'l' ? L.hyL : L.hyR, hf);
+    if (seg <= 0) rects.push({ x0, x1, y0: 0, y1: hf, g: 'b' + c });
+    else if (seg >= hf) rects.push({ x0, x1, y0: 0, y1: hf, g: 't' + c });
+    else rects.push({ x0, x1, y0: 0, y1: seg, g: 't' + c }, { x0, x1, y0: seg, y1: hf, g: 'b' + c });
+  }
+  // An extra line (Paul, 2026-11-19), L.ex = { box: x }: cuts that box at x; the new box (box + 'e') is the part away
+  // from the up-and-down line (a left box's left part, a right box's right part).
+  for (const [g0, x] of Object.entries(L.ex || {})) {
+    const r = rects.find((q) => q.g === g0);
+    if (!r || !(r.x0 < x - 1e-4 && r.x1 > x + 1e-4)) continue;
+    if (g0.endsWith('l')) { rects.push({ ...r, x1: x, g: g0 + 'e' }); r.x0 = x; }
+    else { rects.push({ ...r, x0: x, g: g0 + 'e' }); r.x1 = x; }
+  }
+  if (hf < 1) rects.push({ x0: 0, x1: 1, y0: hf, y1: 1, g: 'ft' });
+  return rects.map((r) => ({ ...r, x0: sigR4(r.x0), x1: sigR4(r.x1), y0: sigR4(r.y0), y1: sigR4(r.y1) }));
+}
+function sigBlank() {
+  const d = { lay: { vx: .3, hyL: .62, hyR: .62, hf: 1 }, groups: Object.fromEntries(SIG_KEYS.map((k) => [k, { items: [], ax: 'left', ay: 'top' }])) };
+  d.rects = sigLayRects(d.lay);
+  return d;
+}
+// Pieces in a box that isn't there any more go to the box that took its place (above or below it, else across).
+function sigRehome(d) {
+  const here = new Set(d.rects.map((r) => r.g));
+  const to = { tl: ['bl', 'tr', 'br'], bl: ['tl', 'br', 'tr'], tr: ['br', 'tl', 'bl'], br: ['tr', 'bl', 'tl'], ft: ['bl', 'br', 'tl', 'tr'] };
+  for (const k of SIG_KEYS) if (!here.has(k) && d.groups[k].items.length) {
+    const order = k.length === 3 ? [k.slice(0, 2), ...to[k.slice(0, 2)]] : [...to[k], ...to[k].map((x) => x + 'e')];   // an extra box: to the box it came from
+    const t = order.find((x) => here.has(x)) || [...here][0];
+    if (t) { d.groups[t].items.push(...d.groups[k].items); d.groups[k].items = []; }
+  }
+}
+// A design saved by an earlier version of the designer: its boxes' pieces go to the box at the same place.
+function sigUpgrade(d) {
+  if (d?.lay) {
+    for (const k of SIG_KEYS) d.groups[k] ||= { items: [], ax: 'left', ay: 'top' };
+    // This morning's extra boxes by row (x2T/te, x2B/be) become extra boxes of the box they cut.
+    for (const [x2, old, top] of [['x2T', 'te', true], ['x2B', 'be', false]]) {
+      const x = d.lay[x2]; delete d.lay[x2];
+      if (x == null) continue;
+      const r = sigLayRects({ ...d.lay, ex: {} }).find((q) => q.g !== 'ft' && (top ? q.y0 < 1e-4 : q.g[0] === 'b') && q.x0 < x && q.x1 > x);
+      if (r) { (d.lay.ex ||= {})[r.g] = x; d.groups[r.g + 'e'].items.push(...(d.groups[old]?.items || [])); }
+    }
+    delete d.groups.te; delete d.groups.be;
+    d.rects = sigLayRects(d.lay); sigRehome(d);
+    return d;
+  }
+  const n = sigBlank();
+  if (d?.rects && d.groups) {
+    for (const [g, c] of Object.entries(d.groups)) {
+      const r = d.rects.filter((x) => x.g === g).sort((a, b) => (b.x1 - b.x0) * (b.y1 - b.y0) - (a.x1 - a.x0) * (a.y1 - a.y0))[0];
+      if (!r) continue;
+      const cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2;
+      const k = r.x0 <= 1e-4 && r.x1 >= 1 - 1e-4 && r.y0 > 0 ? 'ft' : (cy < .62 ? 't' : 'b') + (cx < .3 ? 'l' : 'r');
+      n.groups[k].items.push(...(c.items || []));
+      if (c.items?.length) Object.assign(n.groups[k], { ax: c.ax, ay: c.ay });
+    }
+    if (n.groups.ft.items.length) { n.lay.hf = .75; n.lay.hyL = n.lay.hyR = .45; n.rects = sigLayRects(n.lay); }
+  } else n.groups.tl.items = Object.values(d?.cells || {}).flatMap((c) => c.items || []);
+  sigRehome(n);
+  return n;
+}
+const sigTrimEnd = (t) => (t || '').replace(/\s+$/, '');   // a text without empty lines (or spaces) at its end
+function sigPx(it) { return it.px ?? SIG_SIZES[it.size || 'm']; }
+const sigArea = (r) => (r.x1 - r.x0) * (r.y1 - r.y0);
+function sigMain(d, g) { return d.rects.filter((r) => r.g === g).sort((a, b) => sigArea(b) - sigArea(a))[0]; }
+function sigOrder(d) {                                     // boxes in reading order: top to bottom, left to right
+  return Object.keys(d.groups).filter((g) => sigMain(d, g)).sort((a, b) => { const p = sigMain(d, a), q = sigMain(d, b); return p.y0 - q.y0 || p.x0 - q.x0; });
+}
+const SIG_OFFER_DESIGNED = false;   // see the Signature menu (2026-11-19)
+// The signature designed in StediMail, if it has anything in it yet (else null).
+function sigDesigned() {
+  const saved = store.get('sigDesign', null);
+  if (!saved) return null;
+  const d = sigUpgrade(saved);
+  const full = Object.values(d.groups || {}).some((g) => g.items.some((it) => it.type === 'rule' || it.src || (it.text || '').trim() || it.url));
+  return full ? d : null;
+}
+// Ready-made layouts (Paul, 2026-11-19, from the mock-up he liked): a starting point; the lines still drag after.
+// pic: the box pictures go to when switching (none: they stay with the words); words: the box for the words
+// that were sitting in the picture box. A side line at the footer line (hf) means that side isn't split;
+// vx 0 means one column (the right one).
+const SIG_LAYOUTS = [
+  { name: 'Picture left, details right', lay: { vx: .3, hyL: 1, hyR: 1, hf: 1 }, pic: 'tl', words: 'tr' },
+  { name: 'Details only', lay: { vx: 0, hyL: 1, hyR: 1, hf: 1 }, pic: null, words: 'tr' },
+  { name: 'Picture on top', lay: { vx: 0, hyL: 1, hyR: .45, hf: 1 }, pic: 'tr', words: 'br' },
+  { name: 'Picture left, with footer', lay: { vx: .3, hyL: .72, hyR: .72, hf: .72 }, pic: 'tl', words: 'tr' },
+  { name: 'Details only, with footer', lay: { vx: 0, hyL: .72, hyR: .72, hf: .72 }, pic: null, words: 'tr' },
+  { name: 'Picture left, name above contacts', lay: { vx: .3, hyL: 1, hyR: .44, hf: 1 }, pic: 'tl', words: 'tr' },
+];
+// A small drawing of a layout: its boxes on white, a picture block in its picture box, gray bars for words.
+function sigLayoutThumb(L) {
+  const t = el('div', { class: 'sig-lay-thumb' });
+  const pct = (v) => (v * 100).toFixed(2) + '%';
+  for (const r of sigLayRects(L.lay)) {
+    const b = el('div', { class: 'sig-lay-box', style: `left:${pct(r.x0)};top:${pct(r.y0)};width:${pct(r.x1 - r.x0)};height:${pct(r.y1 - r.y0)}` });
+    if (r.g === L.pic) b.append(el('div', { class: 'sig-lay-pic' }, 'Picture'));
+    else if (r.g === 'ft') b.append(el('div', { class: 'sig-lay-bar thin', style: 'width:85%' }), el('div', { class: 'sig-lay-bar thin', style: 'width:70%' }));
+    else b.append(el('div', { class: 'sig-lay-bar dark', style: 'width:45%' }), el('div', { class: 'sig-lay-bar', style: 'width:35%' }), el('div', { class: 'sig-lay-bar', style: 'width:40%' }));
+    t.append(b);
+  }
+  // The lines between the boxes, from the boxes themselves (so a layout made by hand draws right too).
+  const line = (cls, style) => t.append(el('div', { class: 'sig-lay-line ' + cls, style }));
+  for (const r of sigLayRects(L.lay)) {
+    if (r.x1 < 1 - 1e-4) line('v', `left:${pct(r.x1)};top:${pct(r.y0)};height:${pct(r.y1 - r.y0)}`);
+    if (r.g === 'ft') line('h foot', `top:${pct(r.y0)};left:0;width:100%`);
+    else if (r.y1 < 1 - 1e-4 && !(L.lay.hf < 1 && Math.abs(r.y1 - L.lay.hf) < 1e-4)) line('h', `top:${pct(r.y1)};left:${pct(r.x0)};width:${pct(r.x1 - r.x0)}`);
+  }
+  return t;
+}
+const sigSameLay = (a, b) => ['vx', 'hyL', 'hyR', 'hf'].every((k) => Math.abs(Math.min(a[k], a.hf) - Math.min(b[k], b.hf)) < .02)
+  && Math.abs((a.vxB ?? a.vx) - (b.vxB ?? b.vx)) < .02;
+// The "Choose a layout" window. Resolves with the layout picked, or null.
+function chooseSigLayout(current) {
+  return new Promise((resolve) => {
+    const dlg = el('dialog', { class: 'ask sig-layouts', 'aria-label': 'Choose a layout' });
+    // With a signature already made, its own layout comes first, ready: picking it changes nothing (Paul, 2026-11-19: a
+    // line he'd pulled up was lost on reopening, by picking the nearest template).
+    const choices = current ? [{ name: 'My current layout', lay: current, pic: null, keep: true }, ...SIG_LAYOUTS] : SIG_LAYOUTS;
+    let pick = current ? 0 : Math.max(0, SIG_LAYOUTS.findIndex((L) => current && sigSameLay(L.lay, current)));
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; dlg.close(); dlg.remove(); resolve(v); };
+    const opts = choices.map((L, i) => {
+      const b = el('button', { type: 'button', class: 'sig-lay-opt' + (i === pick ? ' on' : '') + (L.keep ? ' keep' : '') }, [sigLayoutThumb(L), el('span', { class: 'sig-lay-name' }, L.name)]);
+      b.addEventListener('click', () => finish(choices[i]));   // one click opens the designer on it (Paul, 2026-11-19)
+      return b;
+    });
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(null); });   // Esc
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) finish(null); });    // a click outside
+    dlg.addEventListener('close', () => finish(null));
+    dlg.append(el('h2', {}, 'Choose a layout'),
+      el('p', { class: 'hint' }, 'Click a layout to start with it. You can still drag the lines afterwards to resize the boxes.'),
+      el('div', { class: 'sig-lay-grid' }, opts));
+    document.body.append(dlg);
+    dlg.showModal();
+    opts[pick].focus();
+  });
+}
+// Put a design into a layout: pictures go to its picture box, other pieces stay in their box when it's still
+// there, else to the box that took its place. Each box keeps its own Left/Center/Right and Top/Middle/Bottom.
+function sigApplyLayout(d, L) {
+  d.lay = { ...L.lay };
+  d.rects = sigLayRects(d.lay);
+  const pics = [];
+  for (const k of SIG_KEYS) {
+    const keep = d.groups[k].items.filter((it) => it.type !== 'picture');
+    pics.push(...d.groups[k].items.filter((it) => it.type === 'picture'));
+    d.groups[k].items = keep;
+  }
+  sigRehome(d);
+  if (L.pic) {
+    const stray = d.groups[L.pic].items.filter((it) => it.type !== 'picture');   // words where the picture goes
+    if (stray.length && L.words !== L.pic) { d.groups[L.pic].items = []; d.groups[L.words].items.unshift(...stray); }
+    d.groups[L.pic].items.unshift(...pics);
+  } else d.groups[L.words].items.unshift(...pics);
+}
+// The layouts come first, as the designer's opening screen (Paul, 2026-11-19); the designer then opens on the
+// layout picked. With a signature already made, its layout is the one ready, and picking it keeps it as it is.
+async function openSignatureDesigner() {
+  const saved = store.get('sigDesign', null);
+  const first = await chooseSigLayout(saved ? sigUpgrade(saved).lay : null);
+  if (!first && !saved) return;                         // a new signature, and Cancel: nothing to open
+  let d = sigUpgrade(saved || sigBlank());
+  if (first && !first.keep && !(saved && sigSameLay(first.lay, d.lay))) sigApplyLayout(d, first);
+  let active = sigOrder(d)[0];
+  // Undo (Paul, 2026-11-19): every saved change keeps the design as it was before it; changes coming quickly one
+  // after another (dragging a slider, typing a word) are one step.
+  const undoSteps = [];
+  let undoBtn = null;                                   // made with the other buttons below
+  let lastSaved = JSON.stringify(d), lastAt = 0;
+  const save = () => {
+    const now = JSON.stringify(d);
+    if (now !== lastSaved) {
+      if (Date.now() - lastAt > 700) { undoSteps.push(lastSaved); if (undoSteps.length > 100) undoSteps.shift(); }
+      lastAt = Date.now(); lastSaved = now;
+    }
+    store.set('sigDesign', d);
+    if (undoBtn) undoBtn.disabled = !undoSteps.length;
+  };
+  const undo = () => {
+    if (!undoSteps.length) return;
+    d = sigUpgrade(JSON.parse(undoSteps.pop()));
+    lastSaved = JSON.stringify(d); lastAt = 0;
+    store.set('sigDesign', d);
+    if (!sigMain(d, active)) active = sigOrder(d)[0];
+    chosen = null; draw();
+    undoBtn.disabled = !undoSteps.length;
+  };
+  save();
+  const dlg = el('dialog', { class: 'sig-designer', 'aria-label': 'Design a signature' });
+  const boxes = el('div', { class: 'sig-boxes' }), linesBox = el('div', { class: 'sig-lines' });
+  const canvas = el('div', { class: 'sig-canvas', style: `width:${SIG_W}px;height:${SIG_H}px` }, [boxes, linesBox]);
+  const picker = el('input', { type: 'file', accept: 'image/*', hidden: '' });
+  const count = el('span', { class: 'sig-count' });
+  const px = (r) => ({ x: r.x0 * SIG_W, y: r.y0 * SIG_H, w: (r.x1 - r.x0) * SIG_W, h: (r.y1 - r.y0) * SIG_H });
+  const JUST = { left: 'flex-start', center: 'center', right: 'flex-end', top: 'flex-start', middle: 'center', bottom: 'flex-end' };
+  let chosen = null;                                    // the text last clicked in: { k, i }
+  const pieceAt = (k, i) => canvas.querySelector(`.sig-cell[data-k="${k}"] > .sig-piece[data-i="${i}"]`);
+  const refocus = () => chosen && pieceAt(chosen.k, chosen.i)?.querySelector('[contenteditable]')?.focus();
+  // Dragging with the pointer: press on a tool (or a piece's grip), move, and let go over a box. A label
+  // follows the pointer and the box under it lights up. A press without moving is a click.
+  const pointerDrag = (e, label, onDrop, onClick) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const src = e.currentTarget;
+    src.setPointerCapture(e.pointerId);
+    const sx = e.clientX, sy = e.clientY;
+    let ghost = null, over = null, mark = null;
+    const cellAt = (x, y) => { const n = document.elementsFromPoint(x, y).find((m) => m.classList?.contains('sig-rect')); return n && canvas.querySelector(`.sig-cell[data-k="${n.dataset.k}"]`); };
+    // label: words for a new piece, or the piece itself (moving one): a see-through copy of it floats with the
+    // pointer, and a bar shows where it will go in between the pieces (Paul, 2026-11-19).
+    const floating = label instanceof Node;
+    const move = (ev) => {
+      if (!ghost && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+      if (!ghost) {
+        if (floating) {
+          const r = label.getBoundingClientRect();
+          ghost = el('div', { class: 'sig-ghost float', style: `width:${Math.max(40, r.width)}px` }, label.cloneNode(true));
+          label.classList.add('moving');
+        } else ghost = el('div', { class: 'sig-ghost' }, label);
+        dlg.append(ghost);
+      }
+      ghost.style.left = ev.clientX + (floating ? -10 : 12) + 'px'; ghost.style.top = ev.clientY + (floating ? -8 : 10) + 'px';
+      const cell = cellAt(ev.clientX, ev.clientY);
+      if (cell !== over) { over?.classList.remove('drop'); cell?.classList.add('drop'); over = cell; }
+      if (!cell) { mark?.remove(); mark = null; return; }
+      const ps = [...cell.querySelectorAll(':scope > .sig-piece')].filter((p) => p !== label);
+      let at = ps.findIndex((p) => { const r = p.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
+      const cr = cell.getBoundingClientRect();
+      const y = !ps.length ? cr.top + 6 : at < 0 ? ps[ps.length - 1].getBoundingClientRect().bottom + 1 : ps[at].getBoundingClientRect().top - 1;
+      mark ||= dlg.appendChild(el('div', { class: 'sig-insert' }));
+      mark.style.cssText = `left:${cr.left + 6}px;width:${cr.width - 12}px;top:${y - 1}px`;
+    };
+    const up = (ev) => {
+      src.removeEventListener('pointermove', move); src.removeEventListener('pointerup', up); src.removeEventListener('pointercancel', up);
+      over?.classList.remove('drop'); mark?.remove(); if (floating) label.classList.remove('moving');
+      if (!ghost) { if (ev.type === 'pointerup') onClick?.(); return; }
+      ghost.remove();
+      const cell = cellAt(ev.clientX, ev.clientY);
+      if (cell) { let at = dropIndex(cell, ev.clientY); if (at < 0) at = d.groups[cell.dataset.k].items.length; onDrop(cell.dataset.k, at); }
+    };
+    src.addEventListener('pointermove', move); src.addEventListener('pointerup', up); src.addEventListener('pointercancel', up);
+  };
+  const pieceNode = (k, it, i, g) => {
+    let body;
+    const changedText = () => { save(); updateCount(); };
+    // Empty lines left at the end of a text (an Enter after the last word) go when the cursor leaves it: they made
+    // the piece taller than its words, so its buttons sat below them, and added space to the signature (2026-11-19).
+    const trimOnLeave = (words, t) => {
+      const v = sigTrimEnd(words.innerText);
+      if (v !== words.innerText.replace(/\n$/, '') || v !== (t.text || '')) { t.text = v; words.innerText = v; save(); updateCount(); }
+    };
+    if (it.type === 'text') {
+      const line = SIG_LINES[it.line];
+      const words = el('div', { class: 'sig-text', contenteditable: 'true', 'data-placeholder': line ? line.hint : 'Type here', style: sigFont(it, d.groups[k].ls) });
+      words.innerText = sigTrimEnd(it.text);
+      words.addEventListener('input', () => { it.text = words.innerText; changedText(); });
+      words.addEventListener('blur', () => trimOnLeave(words, it));
+      if (line) {
+        const s = Math.round(sigPx(it) * 1.1), ic = icon(line.icon, 'sig-line-icon');
+        ic.setAttribute('style', `width:${s}px;height:${s}px`);
+        body = el('div', { class: 'sig-line-text' }, [ic, words]);
+      } else body = words;
+    } else if (it.type === 'link') {
+      const words = el('div', { class: 'sig-link', contenteditable: 'true', 'data-placeholder': 'Link words', style: sigFont(it, d.groups[k].ls) + ';color:#1a73e8' });
+      words.innerText = sigTrimEnd(it.text);
+      words.addEventListener('blur', () => trimOnLeave(words, it));
+      const url = el('input', { type: 'url', class: 'sig-url', placeholder: 'Web address, e.g. stedimail.com', value: it.url || '' });
+      words.addEventListener('input', () => { it.text = words.innerText; changedText(); });
+      url.addEventListener('input', () => { it.url = url.value.trim(); changedText(); });
+      body = el('div', { class: 'sig-linkbox' }, [words, url]);
+    } else if (it.type === 'rule') {
+      // Space around it follows the box's line spacing; its gray is chosen like a text's (click it) (Paul, 2026-11-19).
+      body = el('div', { class: 'sig-rule-line', tabindex: '0', title: 'Click to change its shade', style: `margin:${Math.round(6 * (d.groups[k].ls ?? 1))}px 0;border-top-color:${sigColor(it)}` });
+    } else if (!it.src) {
+      // Dropped from the bar (Paul, 2026-11-19): the browser lets the file picker open only on a click, not at the
+      // end of a drag, so the dropped picture waits here for one click.
+      body = el('button', { type: 'button', class: 'sig-pick' }, '🖼 Choose a picture');
+      body.addEventListener('click', async () => {
+        const pic = await choosePicture();
+        if (!pic) return;
+        Object.assign(it, pic); save(); draw();
+      });
+    } else {
+      const room = sigPicBox(d.groups[k], g), [w, h] = sigPicSize(it, room);
+      const img = el('img', { class: 'sig-img', src: it.src, alt: '', draggable: 'false', style: `width:${w}px;height:${h}px` });
+      // + and − in the middle of the picture: 5% bigger or smaller a click (Paul, 2026-11-19).
+      const step = (f) => (e) => { e.stopPropagation(); it.scale = Math.round(Math.min(4, Math.max(.2, (it.scale ?? 1) * f)) * 1000) / 1000; save(); draw(); };
+      const plus = el('button', { type: 'button', class: 'sig-zoom', title: '5% bigger', 'aria-label': 'Make the picture 5% bigger' }, '+');
+      const minus = el('button', { type: 'button', class: 'sig-zoom', title: '5% smaller', 'aria-label': 'Make the picture 5% smaller' }, '\u2212');
+      plus.addEventListener('click', step(1.05)); minus.addEventListener('click', step(1 / 1.05));
+      // Nudges, 4 px a click (Paul, 2026-11-19): ▲ ▼ in the middle, ◀ ▶ either side; − and + on the outside.
+      const nudge = (key, by) => (e) => { e.stopPropagation(); it[key] = Math.max(-300, Math.min(300, (it[key] ?? 0) + by)); save(); draw(); };
+      const btn = (title, sign, run) => { const b = el('button', { type: 'button', class: 'sig-zoom', title, 'aria-label': title }, sign); b.addEventListener('click', run); b.addEventListener('pointerdown', (e) => e.stopPropagation()); return b; };
+      const up = btn('Nudge up', '\u25B2', nudge('dy', -4)), down = btn('Nudge down', '\u25BC', nudge('dy', 4));
+      const left = btn('Nudge left', '\u25C0', nudge('dx', -4)), right = btn('Nudge right', '\u25B6', nudge('dx', 4));
+      for (const b of [plus, minus]) b.addEventListener('pointerdown', (e) => e.stopPropagation());
+      const [pl, pr] = sigNudgePad(it.dx, d.groups[k].ax), [pt, pb] = sigNudgePad(it.dy, { top: 'left', middle: 'center', bottom: 'right' }[d.groups[k].ay]);
+      body = el('div', { class: 'sig-imgwrap', style: `padding:${pt}px ${pr}px ${pb}px ${pl}px` }, [img,
+        // A small cross so it fits on the picture (in one row it was wider than a logo): − ▲ + / ◀ ▶ / ▼ (Paul, 2026-11-19).
+        el('div', { class: 'sig-zooms cross', style: `--zs:${Math.max(.6, Math.min(1, (w - 8) / 86))}` }, [minus, up, plus, left, right, down])]);
+    }
+    const grip = el('span', { class: 'sig-grip', title: 'Drag to move' }, icon('grip'));
+    const del = el('button', { type: 'button', class: 'sig-del', title: 'Remove', 'aria-label': 'Remove' }, '✕');
+    del.addEventListener('click', () => { d.groups[k].items.splice(i, 1); chosen = null; save(); draw(); });
+    grip.addEventListener('pointerdown', (e) => pointerDrag(e, node, (to, at) => {
+      const [moved] = d.groups[k].items.splice(i, 1);
+      if (to === k && i < at) at--;
+      d.groups[to].items.splice(at, 0, moved);
+      active = to; chosen = null; save(); draw();
+    }));
+    const node = el('div', { class: 'sig-piece sig-' + it.type, 'data-i': String(i) }, [grip, body, del]);
+    node.addEventListener('focusin', () => { chosen = { k, i }; showText(); });
+    return node;
+  };
+  const choosePicture = () => new Promise((res) => {
+    picker.onchange = () => { const f = picker.files[0]; picker.value = ''; f ? sigPicture(f).then(res) : res(null); };
+    picker.click();
+  });
+  const addPiece = async (k, type, at, dropped) => {
+    let it = SIG_LINES[type] ? { type: 'text', line: type, px: SIG_SIZES.s } : { type };
+    // New text takes the shade last set, so a run of entries matches (Paul, 2026-11-19).
+    const lastShade = store.get('sigShade', null);
+    if (['text', 'link'].includes(it.type) && lastShade != null) it.shade = lastShade;
+    if (type === 'picture' && !dropped) {
+      const pic = await choosePicture();
+      if (!pic) return;
+      it = { type: 'picture', ...pic };
+    }
+    const c = d.groups[k];
+    c.items.splice(at ?? c.items.length, 0, it);
+    active = k; save(); draw();
+    chosen = { k, i: at ?? c.items.length - 1 }; refocus(); showText();
+  };
+  // Where in a box a drop lands: before the first piece whose middle is below the pointer.
+  const dropIndex = (cell, y) => [...cell.querySelectorAll(':scope > .sig-piece')].findIndex((p) => { const r = p.getBoundingClientRect(); return y < r.top + r.height / 2; });
+  const draw = () => {
+    boxes.replaceChildren();
+    for (const r of d.rects) {
+      const g = px(r), c = d.groups[r.g], main = sigMain(d, r.g) === r;
+      const node = el('div', { class: 'sig-rect' + (main ? ' sig-cell' : '') + (r.g === active ? ' active' : ''), 'data-k': r.g, 'data-ax': c.ax,
+        style: `left:${g.x}px;top:${g.y}px;width:${g.w}px;height:${g.h}px` + (main ? `;align-items:${JUST[c.ax]};justify-content:${JUST[c.ay]};text-align:${c.ax}` : '') });
+      if (main) {
+        c.items.forEach((it, i) => node.append(pieceNode(r.g, it, i, g)));
+        if (!c.items.length) node.append(el('span', { class: 'sig-empty' }, 'Drag Picture, Link or Text here'));
+      }
+      node.addEventListener('mousedown', (e) => {
+        const inLine = !!e.target.closest('.sig-piece');
+        if (active !== r.g) { active = r.g; boxes.querySelectorAll('.sig-rect').forEach((n) => n.classList.toggle('active', n.dataset.k === active)); showAlign(); }
+        // The box itself: settings for all its lines. Chrome would otherwise put the cursor in the nearest line.
+        if (!inLine) { e.preventDefault(); chosen = null; document.activeElement?.blur?.(); showText(); }
+      });
+      boxes.append(node);
+    }
+    drawLines();
+    requestAnimationFrame(indentCrowded);            // once laid out (the first draw comes before the window shows)
+    showAlign(); showText(); updateCount();
+  };
+  // Pieces so close that their ⠿ and ✕ buttons would overlap (a divider between two lines of text): the one in between
+  // (a divider first) has its buttons stepped in, ⠿ just right of its neighbours' and ✕ just left (Paul, 2026-11-19).
+  const indentCrowded = () => {
+    for (const cell of boxes.querySelectorAll('.sig-cell')) {
+      const ps = [...cell.querySelectorAll(':scope > .sig-piece')];
+      const mid = ps.map((p) => { const r = p.getBoundingClientRect(); return (r.top + r.bottom) / 2; });
+      const lastAt = [];                               // the middle of the last piece's buttons at each step in
+      const clash = (lvl, i) => lastAt[lvl] != null && mid[i] - lastAt[lvl] < 20;   // buttons are 20 px tall
+      ps.forEach((p, i) => {
+        p.classList.remove('indent1', 'indent2', 'indent3');
+        const crowded = clash(0, i) || (i + 1 < ps.length && mid[i + 1] - mid[i] < 20);
+        const order = p.classList.contains('sig-rule') && crowded ? [1, 0, 2, 3] : [0, 1, 2, 3];   // a divider steps in first
+        const lvl = order.find((l) => !clash(l, i)) ?? 3;
+        if (lvl) p.classList.add('indent' + lvl);
+        lastAt[lvl] = mid[i];
+      });
+    }
+  };
+  // The lines. The pointer is held by the signature area, which is never redrawn, so a drag isn't lost while the
+  // lines are redrawn under it. Let go near an edge (a side line: near the top or the footer line) and the line
+  // goes to it, taking that box away; its pieces move to the box that took its place. Lines dragged near each
+  // other snap level (Paul, 2026-11-19). While the side lines are level, the up-and-down line is in two pieces,
+  // above and below them, each dragged on its own; a square where lines meet drags all of them together.
+  const SNAP = 8;                                       // px
+  // The stretch of line a + sits on (px along it): the box edge it's centred on.
+  const sectionOf = (x, y, axis) => {
+    const px = x * SIG_W, py = y * SIG_H;
+    for (const r of d.rects) {
+      const g = { x0: r.x0 * SIG_W, x1: r.x1 * SIG_W, y0: r.y0 * SIG_H, y1: r.y1 * SIG_H };
+      if (axis === 'h' && (Math.abs(g.y0 - py) < 1 || Math.abs(g.y1 - py) < 1) && px >= g.x0 && px <= g.x1) return [g.x0, g.x1];
+      if (axis === 'v' && (Math.abs(g.x0 - px) < 1 || Math.abs(g.x1 - px) < 1) && py >= g.y0 && py <= g.y1) return [g.y0, g.y1];
+    }
+    return axis === 'h' ? [px - 30, px + 30] : [py - 30, py + 30];
+  };
+  // Show a + only while the pointer is on (within 8 px of) the line section it sits on.
+  const showKnobs = (ev) => {
+    const b = canvas.getBoundingClientRect(), x = ev ? ev.clientX - b.left : -1e3, y = ev ? ev.clientY - b.top : -1e3;
+    linesBox.querySelectorAll('.sig-knob').forEach((k) => {
+      const [axis, at, [a, z]] = JSON.parse(k.dataset.on);
+      const on = axis === 'h' ? Math.abs(y - at) <= 8 && x >= a - 4 && x <= z + 4 : Math.abs(x - at) <= 8 && y >= a - 4 && y <= z + 4;
+      k.classList.toggle('show', on || k.matches(':hover'));
+    });
+  };
+  canvas.addEventListener('pointermove', (ev) => showKnobs(ev));
+  canvas.addEventListener('pointerleave', () => showKnobs(null));
+  const drawLines = () => {
+    linesBox.replaceChildren();
+    const L = d.lay, edge = (v, hi = 1) => v <= 0 || v >= hi;
+    const h = Math.min(L.hyL, L.hf), split = sigSplitAt(L) != null;
+    const level = !split && L.vx > 0 && L.vx < 1 && h > 0 && h < L.hf && Math.abs(Math.min(L.hyR, L.hf) - h) < 1e-4;
+    // A line parked at an edge (its box taken away) is a + circle on that edge (or on the footer line), in the
+    // middle of its side, so it never lies over the words (Paul, 2026-11-19). Drag it out to split again.
+    // Adding a line, or pulling a parked one out: a small + circle centred on its line section, shown only while the
+    // pointer is on that line (Paul, 2026-11-19). on: the section it sits on, [axis, at, from, to] in px.
+    const knob = (x, y, title, xs, ys, pre, on) => {
+      const k = el('div', { class: 'sig-knob', title, style: `left:${x * SIG_W}px;top:${y * SIG_H}px` }, '+');
+      k.dataset.on = JSON.stringify(on || (xs.length ? ['v', x * SIG_W, sectionOf(x, y, 'v')] : ['h', y * SIG_H, sectionOf(x, y, 'h')]));
+      k.addEventListener('pointerdown', (e) => { pre?.(); dragLine(e, xs, ys); });
+      linesBox.append(k);
+    };
+    const line = (key, vertical, at, from, to, title, cls = '') => {
+      if (to - from <= 0) return;
+      if (cls.includes('at-edge') && key !== 'hf') {
+        const mid = (from + to) / 2;
+        if (vertical) knob(at, mid, 'Drag in to split into two sides again', [key], []);
+        // A side line parked on the footer line (or the bottom, or the top): its + sits there too, and only pulls out a
+        // new green line; the footer line itself never moves with it (Paul, 2026-11-19).
+        else knob(mid, at, 'Drag to add a line across this side (the footer stays where it is)', [], [key]);
+        return;
+      }
+      const n = el('div', { class: `sig-line ${vertical ? 'v' : 'h'}${cls}`, title });
+      n.style.cssText = vertical ? `left:${at * SIG_W}px;top:${from * SIG_H}px;height:${(to - from) * SIG_H}px`
+        : `top:${at * SIG_H}px;left:${from * SIG_W}px;width:${(to - from) * SIG_W}px`;
+      n.addEventListener('pointerdown', (e) => dragLine(e, vertical ? [key] : [], vertical ? [] : [key]));
+      linesBox.append(n);
+    };
+    // Where a line across meets the up-and-down line: a little dot that slides the whole up-and-down line (both its
+    // sections, keeping any offset between them) left or right (Paul, 2026-11-19).
+    const joint = (x, y) => {
+      const n = el('div', { class: 'sig-joint', title: 'Drag left or right to move the whole up-and-down line', style: `left:${x * SIG_W}px;top:${y * SIG_H}px` });
+      n.addEventListener('pointerdown', (e) => dragLine(e, ['vall'], []));
+      linesBox.append(n);
+    };
+    const foot = () => line('hf', false, L.hf, 0, 1, 'Footer line: drag up for a footer across the whole signature', ' foot' + (edge(L.hf) ? ' at-edge' : ''));
+    if (split) {
+      line('vx', true, L.vx, 0, h, 'Drag left or right (the part above the line across)', edge(L.vx) ? ' at-edge' : '');
+      line('vxB', true, L.vxB, h, L.hf, 'Drag left or right (the part below the line across)', edge(L.vxB) ? ' at-edge' : '');
+      line('hy', false, h, 0, 1, 'Drag up or down');
+      foot();
+      if (L.vx > 0 && L.vx < 1) joint(L.vx, h);
+      if (L.vxB > 0 && L.vxB < 1) joint(L.vxB, h);
+      extras(line, knob);
+      return;
+    }
+    if (level) {
+      line('vxT', true, L.vx, 0, h, 'Drag left or right: just the part above the line across');
+      line('vxB', true, L.vx, h, L.hf, 'Drag left or right: just the part below the line across');
+    } else line('vx', true, L.vx, 0, L.hf, 'Drag left or right', edge(L.vx) ? ' at-edge' : '');
+    line('hyL', false, Math.min(L.hyL, L.hf), 0, Math.max(0, L.vx), 'Drag up or down to split the left side', edge(L.hyL, L.hf) ? ' at-edge' : '');
+    line('hyR', false, Math.min(L.hyR, L.hf), Math.min(1, L.vx), 1, 'Drag up or down to split the right side', edge(L.hyR, L.hf) ? ' at-edge' : '');
+    foot();
+    if (L.vx > 0 && L.vx < 1) {
+      if (level) joint(L.vx, h);
+      else {
+        if (L.hyL > 0 && L.hyL < L.hf) joint(L.vx, L.hyL);
+        if (L.hyR > 0 && L.hyR < L.hf) joint(L.vx, L.hyR);
+      }
+    }
+    extras(line, knob);
+  };
+  // The extra lines, and a + in the middle of each section of the up-and-down line (each stretch between the lines
+  // across that touch it) to pull a new one out sideways into the box on that side (Paul, 2026-11-19).
+  const extras = (line, knob) => {
+    const L = d.lay;
+    for (const [g0, x] of Object.entries(L.ex || {})) {
+      const r = d.rects.find((q) => q.g === g0 + 'e');
+      if (r) line('ex:' + g0, true, x, r.y0, r.y1, 'Drag left or right; drag onto the next line to take this box away');
+    }
+    const h = sigSplitAt(L);
+    const pieces = h != null ? [[L.vx, 0, h], [L.vxB, h, L.hf]] : [[L.vx, 0, L.hf]];
+    for (const [v, a, b] of pieces) {
+      if (!(v > 0 && v < 1)) continue;
+      const cuts = [a, b, ...[L.hyL, L.hyR].map((y) => Math.min(y, L.hf)).filter((y) => y > a + 1e-4 && y < b - 1e-4)].sort((m, n) => m - n);
+      for (let i = 0; i + 1 < cuts.length; i++) {
+        const y0 = cuts[i], y1 = cuts[i + 1];
+        if ((y1 - y0) * SIG_H < 30) continue;
+        knob(v, (y0 + y1) / 2, 'Drag sideways to add a box beside this part of the line', ['pull:' + v + ':' + (y0 + y1) / 2], [], null, ['v', v * SIG_W, [y0 * SIG_H, y1 * SIG_H]]);
+      }
+    }
+  };
+  // Drag lines: xs move left and right, ys up and down (a joint has one of each).
+  const dragLine = (e, xs, ys) => {
+    e.preventDefault(); e.stopPropagation();
+    canvas.setPointerCapture(e.pointerId);
+    const L = d.lay, box = canvas.getBoundingClientRect();
+    // A side line pulled out of the top or the footer cuts a box in two: note where that box's pieces sit now, so the
+    // ones on the far side of the line can follow into the new box (Paul, 2026-11-19).
+    const cutting = ys.filter((k) => k === 'hyL' || k === 'hyR').map((k) => {
+      const c = k === 'hyL' ? 'l' : 'r', whole = L[k] >= L.hf ? 't' + c : L[k] <= 0 ? 'b' + c : null;
+      if (!whole) return null;
+      const cell = canvas.querySelector(`.sig-cell[data-k="${whole}"]`), cr = cell?.getBoundingClientRect();
+      const mids = cell ? [...cell.querySelectorAll(':scope > .sig-piece')].map((p) => { const r = p.getBoundingClientRect(); return ((r.top + r.bottom) / 2 - box.top) / SIG_H; }) : [];
+      return { key: k, c, whole, mids };
+    }).filter(Boolean);
+    if (xs.includes('vxT') || xs.includes('vxB')) L.vxB ??= L.vx;          // the up-and-down line splits
+    let pulled = null;                                                     // the box a + is pulling a new line into
+    const from = { x: (e.clientX - box.left) / SIG_W, vx: L.vx, vxB: L.vxB };   // where a dot drag started
+    const near = (a, b, size) => b != null && Math.abs(a - b) * size < SNAP;
+    const setX = (key, v) => {
+      v = Math.min(1, Math.max(0, v));
+      if (key === 'vxT' || key === 'vx') {
+        if (L.vxB != null && key === 'vxT' && near(v, L.vxB, SIG_W)) v = L.vxB;
+        if (key === 'vx' && L.vxB != null && !xs.includes('vxB')) { if (near(v, L.vxB, SIG_W)) v = L.vxB; }
+        if (key === 'vx' && L.vxB != null && sigSplitAt(L) == null && !xs.includes('vxB')) L.vxB = null;   // joined: moves whole
+        L.vx = v;
+      } else if (key === 'vxB') { if (near(v, L.vx, SIG_W)) v = L.vx; L.vxB = v; }
+      else if (key === 'vall') {                                // a dot: both sections together
+        const dv = v - from.x, lo = Math.min(from.vx, from.vxB ?? from.vx), hi = Math.max(from.vx, from.vxB ?? from.vx);
+        const move = Math.min(1 - hi, Math.max(-lo, dv));
+        L.vx = from.vx + move; if (from.vxB != null) L.vxB = from.vxB + move;
+      }
+      else if (key.startsWith('ex:')) L.ex[key.slice(3)] = v;
+      else if (key.startsWith('pull:')) {                      // which box: the one on the side the pointer has gone to
+        const [, at, y] = key.split(':').map(Number);
+        const side = v > at ? 'r' : 'l';
+        const r = sigLayRects({ ...L, ex: {} }).find((q) => q.g.length === 2 && q.g !== 'ft' && q.y0 <= y && q.y1 >= y && Math.abs((side === 'r' ? q.x0 : q.x1) - at) < 1e-4);
+        L.ex ||= {};
+        const g = r?.g;
+        if (pulled && pulled !== g) { delete L.ex[pulled]; pulled = null; }   // went over to the other side
+        if (g && (pulled === g || !(g in L.ex))) { L.ex[g] = v; pulled = g; }   // keeps following the pointer
+      }
+    };
+    const setY = (key, v) => {
+      if (key === 'hf') { L.hf = Math.min(1, Math.max(.2, v)); return; }
+      v = Math.min(L.hf, Math.max(0, v));
+      if (key === 'hy') { L.hyL = L.hyR = v; return; }
+      const other = key === 'hyL' ? 'hyR' : 'hyL';
+      if (!ys.includes(other) && near(v, Math.min(L[other], L.hf), SIG_H)) v = Math.min(L[other], L.hf);   // snap level
+      L[key] = v;
+    };
+    const move = (ev) => {
+      const x = (ev.clientX - box.left) / SIG_W, y = (ev.clientY - box.top) / SIG_H;
+      xs.forEach((k) => setX(k, x)); ys.forEach((k) => setY(k, y));
+      d.rects = sigLayRects(L); draw();
+    };
+    const up = () => {
+      canvas.removeEventListener('pointermove', move); canvas.removeEventListener('pointerup', up); canvas.removeEventListener('pointercancel', up);
+      const toEdge = (v, hi) => (v < SIG_EDGE ? 0 : v > hi - SIG_EDGE ? hi : sigR4(v));
+      L.vx = toEdge(L.vx, 1); if (L.vxB != null) L.vxB = toEdge(L.vxB, 1);
+      L.hf = toEdge(L.hf, 1);
+      L.hyL = toEdge(Math.min(L.hyL, L.hf), L.hf); L.hyR = toEdge(Math.min(L.hyR, L.hf), L.hf);
+      if (L.vxB != null) {
+        const h = Math.min(L.hyL, L.hf), lvl = Math.abs(Math.min(L.hyR, L.hf) - h) < 1e-4 && h > 0 && h < L.hf;
+        if (Math.abs(L.vxB - L.vx) < 1e-4) L.vxB = null;                          // back in line: one piece again
+        else if (!lvl) { if (h <= 0) L.vx = L.vxB; L.vxB = null; }                // the line across went to an edge
+      }
+      // An extra line let go on another line or near the edge: its box goes (either part too thin).
+      for (const g0 of Object.keys(L.ex || {})) {
+        L.ex[g0] = sigR4(L.ex[g0]);
+        const rs = sigLayRects(L), nb = rs.find((r) => r.g === g0 + 'e'), rest = rs.find((r) => r.g === g0);
+        if (!nb || !rest || nb.x1 - nb.x0 < SIG_MIN || rest.x1 - rest.x0 < SIG_MIN) delete L.ex[g0];
+      }
+      for (const cut of cutting) {                      // the pieces past the new line go into the new box
+        const y = Math.min(L[cut.key], L.hf);
+        if (y <= 0 || y >= L.hf) continue;
+        const from = d.groups[cut.whole], to = d.groups[(cut.whole[0] === 't' ? 'b' : 't') + cut.c];
+        const go = from.items.filter((it, i) => (cut.whole[0] === 't' ? cut.mids[i] > y : cut.mids[i] < y));
+        if (!go.length) continue;
+        from.items = from.items.filter((it) => !go.includes(it));
+        to.items.push(...go);
+        Object.assign(to, { ax: from.ax, ay: 'top' });
+      }
+      d.rects = sigLayRects(L); sigRehome(d);
+      if (!sigMain(d, active)) active = sigOrder(d)[0];
+      chosen = null; save(); draw();
+    };
+    canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+  };
+  // The bar on the right: drag a tool into a box, or click it to add to the chosen box.
+  const toolBtn = (type, label, glyph) => {
+    const b = el('button', { type: 'button', class: 'sig-tool', title: 'Drag into a box, or click to add to the chosen box' }, [el('span', { class: 'sig-tool-glyph' }, glyph), label]);
+    b.addEventListener('pointerdown', (e) => pointerDrag(e, label, (k, at) => addPiece(k, type, at, true), () => addPiece(active, type)));
+    b.addEventListener('click', (e) => { if (e.detail === 0) addPiece(active, type); });   // the keyboard (Enter or Space)
+    return b;
+  };
+  // The vertical line between two things on one line ("Main | 310…"): put in the text being typed, at the cursor,
+  // or at the end of the text last clicked in (Paul, 2026-11-18). Typing "|" does the same.
+  const barBtn = el('button', { type: 'button', class: 'sig-tool', title: 'Put a vertical line in the text, at the cursor' }, [el('span', { class: 'sig-tool-glyph' }, '|'), 'Vertical line']);
+  barBtn.addEventListener('mousedown', (e) => e.preventDefault());              // keep the cursor in the text
+  barBtn.addEventListener('click', () => {
+    const typing = document.activeElement?.closest?.('.sig-designer [contenteditable]');
+    if (typing) { document.execCommand('insertText', false, ' | '); return; }
+    const it = chosen && d.groups[chosen.k]?.items[chosen.i];
+    if (!it || !['text', 'link'].includes(it.type)) { toast('Click in a text first, where the line should go'); return; }
+    it.text = (it.text || '').replace(/\s*$/, '') + ' | '; save(); draw(); refocus();
+  });
+  const tools = el('div', { class: 'sig-tools' }, [toolBtn('picture', 'Picture', '🖼'), toolBtn('link', 'Link', '🔗'), toolBtn('text', 'Text', 'T'),
+    toolBtn('rule', 'Divider line', '—'), barBtn,
+    el('div', { class: 'sig-tools-head' }, 'Contact lines'),
+    ...Object.entries(SIG_LINES).map(([kind, x]) => toolBtn(kind, x.label, icon(x.icon)))]);
+  // The chosen box's line spacing: an icon button with the choices under it.
+  const spacingBtn = (c) => {
+    const now = c.ls ?? 1;
+    const x = el('button', { type: 'button', class: 'sig-spacing', title: 'Line spacing', 'aria-label': `Line spacing: ${now}` },
+      [icon('lineSpacing', 'sig-spacing-icon'), String(now)]);
+    // The choices open inside the designer: the page's own menu would sit behind this window, out of reach.
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (dlg.querySelector('.sig-spacing-pop')) { dlg.querySelector('.sig-spacing-pop').remove(); return; }
+      const r = x.getBoundingClientRect();
+      const pop = el('div', { class: 'sig-spacing-pop', role: 'menu', 'aria-label': 'Line spacing', style: `left:${r.left}px;top:${r.bottom + 4}px` },
+        [el('div', { class: 'sig-spacing-head' }, 'Line spacing'), ...SIG_SPACINGS.map((v) => {
+          const o = el('button', { type: 'button', role: 'menuitemradio', 'aria-checked': String(v === now), class: v === now ? 'current' : '' },
+            [el('span', { class: 'tick' }, v === now ? '✓' : ''), String(v), v === 1 ? el('span', { class: 'note' }, 'normal') : null]);
+          o.addEventListener('click', () => { pop.remove(); c.ls = v; save(); draw(); });
+          return o;
+        })]);
+      const off = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); dlg.removeEventListener('pointerdown', off, true); } };
+      dlg.addEventListener('pointerdown', off, true);
+      pop.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); pop.remove(); x.focus(); } });
+      dlg.append(pop);
+      pop.querySelector('.current')?.focus();
+    });
+    return x;
+  };
+  // The chosen box: Left, Center or Right; Top, Middle or Bottom.
+  const alignBar = el('div', { class: 'sig-align' });
+  const showAlign = () => {
+    const c = d.groups[active];
+    const b = (key, v, label) => {
+      const x = el('button', { type: 'button', class: c[key] === v ? 'current' : '' }, label);
+      // Choosing a place puts pictures right there: their nudges that way are undone (Paul, 2026-11-19).
+      x.addEventListener('click', () => { c[key] = v; for (const it of c.items) if (it.type === 'picture') delete it[key === 'ax' ? 'dx' : 'dy']; save(); draw(); });
+      return x;
+    };
+    alignBar.replaceChildren(el('span', { class: 'sig-align-label' }, 'Chosen box:'), b('ax', 'left', 'Left'), b('ax', 'center', 'Center'), b('ax', 'right', 'Right'),
+      el('span', { class: 'sep' }), b('ay', 'top', 'Top'), b('ay', 'middle', 'Middle'), b('ay', 'bottom', 'Bottom'),
+      el('span', { class: 'sep' }), spacingBtn(c));
+  };
+  // The chosen text (the one last clicked in): size, then a fine-tune slider; styles; font; shade.
+  const textBar = el('div', { class: 'sig-textbar' });
+  // What the text settings change (Paul, 2026-11-19): a line clicked in → just that line; a box clicked (not in a
+  // line) → every line in it. The settings show the first one's values.
+  const showText = () => {
+    const one = chosen && d.groups[chosen.k]?.items[chosen.i];
+    const isText = (x) => ['text', 'link'].includes(x?.type);
+    const rules = one?.type === 'rule' ? [one] : one ? [] : (d.groups[active]?.items || []).filter((x) => x.type === 'rule');
+    // Divider lines take a gray like text: alone when one is clicked; with the box's text when the box is.
+    const shadeRules = (v) => rules.forEach((t) => {
+      t.shade = v;
+      const p = pieceAt(one ? chosen.k : active, d.groups[one ? chosen.k : active].items.indexOf(t))?.querySelector('.sig-rule-line');
+      if (p) p.style.borderTopColor = sigColor(t);
+    });
+    if (one?.type === 'rule' || (!one && rules.length && !(d.groups[active]?.items || []).some(isText))) {
+      textBar.replaceChildren(el('div', { class: 'sig-align' }, [el('span', { class: 'sig-align-label' }, one ? 'Chosen divider line:' : 'Whole box:')]),
+        el('div', { class: 'sig-align' }, [numberSlider('Shade', '(0 black, 80 light gray)', 0, 80, sigShade(rules[0]), (v) => { shadeRules(v); save(); updateCount(); }, true)]));
+      return;
+    }
+    const k = isText(one) ? chosen.k : active;
+    const targets = isText(one) ? [one] : (d.groups[active]?.items || []).filter(isText);
+    if (!targets.length) { textBar.replaceChildren(el('span', { class: 'sig-align-label' }, 'Click a box to change all its lines, or a line to change just that one: size, style, font, shade.')); return; }
+    const it = targets[0], all = (fn) => targets.forEach(fn);
+    const set = (fn) => () => { fn(); save(); draw(); refocus(); };
+    const b = (label, on, fn) => { const x = el('button', { type: 'button', class: on ? 'current' : '' }, label); x.addEventListener('mousedown', (e) => e.preventDefault()); x.addEventListener('click', set(fn)); return x; };
+    const px = sigPx(it);
+    const onPiece = (fn) => targets.forEach((t) => { const p = pieceAt(k, d.groups[k].items.indexOf(t))?.querySelector('[contenteditable]'); if (p) fn(p, t); });
+    const toggle = (key) => { const v = !it[key]; all((t) => { t[key] = v; }); };
+    textBar.replaceChildren(
+      el('div', { class: 'sig-align' }, [el('span', { class: 'sig-align-label' }, isText(one) ? 'Chosen line:' : 'Whole box:'),
+        ...Object.entries({ t: 'Tiny', s: 'Small', m: 'Normal', l: 'Large', xl: 'Extra large', j: 'Jumbo' }).map(([v, label]) => b(label, px === SIG_SIZES[v], () => all((t) => { t.px = SIG_SIZES[v]; delete t.size; })))]),
+      // Size: just the four choices (Paul, 2026-11-19: the pixel slider and number box went).
+      el('div', { class: 'sig-align' }, [b('Bold', !!it.bold, () => toggle('bold')), b('Italic', !!it.italic, () => toggle('italic')),
+        b('Underline', !!it.underline, () => toggle('underline')), b('ALL CAPS', !!it.caps, () => toggle('caps')),
+        el('span', { class: 'sep' }), fontPick(it, (f) => all((t) => { t.font = f; }))]),
+      el('div', { class: 'sig-align' }, [numberSlider('Shade', '(0 black, 80 light gray)', 0, 80, sigShade(it), (v) => {
+        all((t) => { t.shade = v; delete t.gray; });
+        shadeRules(v);                                             // the box's divider lines too, when it's the box
+        store.set('sigShade', v);                                  // following new text gets it too
+        onPiece((p, t) => { p.style.color = t.type === 'link' ? '#1a73e8' : sigColor(t); });
+        save(); updateCount();
+      }, true)]));
+  };
+  // A slider with its number beside it: either can be changed, so a value can be read and used again.
+  const numberSlider = (label, unit, min, max, value, onChange, shade) => {
+    const range = el('input', { type: 'range', min: String(min), max: String(max), step: '1', value: String(value), 'aria-label': label, class: shade ? 'shade' : null });
+    const num = el('input', { type: 'number', class: 'sig-num', min: String(min), max: String(max), step: '1', value: String(value), 'aria-label': label + ' value' });
+    const clamp = (v) => Math.min(max, Math.max(min, Math.round(Number(v) || 0)));
+    // Shade: a sample square of the gray, right of the number (Paul, 2026-11-19).
+    const swatch = shade ? el('span', { class: 'sig-swatch', 'aria-hidden': 'true' }) : null;
+    const paint = (v) => { if (swatch) swatch.style.background = sigColor({ shade: v }); };
+    paint(value);
+    range.addEventListener('input', () => { num.value = range.value; paint(clamp(range.value)); onChange(clamp(range.value), false); });
+    range.addEventListener('change', () => onChange(clamp(range.value), true));
+    num.addEventListener('change', () => { const v = clamp(num.value); num.value = range.value = String(v); paint(v); onChange(v, true); });
+    return el('label', { class: 'sig-slider' }, [label, range, num, swatch, el('span', { class: 'sig-unit' }, unit)]);
+  };
+  // The font list: the common ones, then this computer's own once Chrome has been allowed to list them.
+  let localFonts = store.get('sigLocalFonts', null);
+  const fontPick = (it, apply) => {
+    const sel = el('select', { class: 'sig-font', 'aria-label': 'Font' });
+    const names = [...new Set([...SIG_FONTS, ...(localFonts || []), it.font || 'Arial'])];
+    for (const n of names) sel.append(el('option', { value: n, style: `font-family:'${n}'` }, n));
+    if (!localFonts && window.queryLocalFonts) sel.append(el('option', { value: '__more' }, 'Add this computer\u2019s fonts\u2026'));
+    sel.value = it.font || 'Arial';
+    sel.addEventListener('change', async () => {
+      if (sel.value === '__more') {
+        try { localFonts = [...new Set((await window.queryLocalFonts()).map((f) => f.family))].sort((a, b) => a.localeCompare(b)); store.set('sigLocalFonts', localFonts); }
+        catch { toast('Chrome didn\u2019t allow listing this computer\u2019s fonts'); }
+        showText(); return;
+      }
+      apply(sel.value); save(); draw(); refocus();
+    });
+    return el('label', { class: 'sig-font-wrap' }, ['Font', sel]);
+  };
+  const updateCount = () => {
+    // Pictures left out: Gmail stores pasted pictures itself, so only the words and layout count (2026-11-19).
+    const n = sigHtml(d, sigIconCache).replace(/src="data:[^"]*"/g, 'src=""').length;
+    count.textContent = n > 10000 ? `About ${n.toLocaleString()} characters of words and layout: over Gmail's 10,000 limit` : '';
+  };
+  const copy = el('button', { type: 'button', class: 'primary sig-copy' }, 'Copy signature and open Gmail');
+  copy.addEventListener('click', async () => {
+    const html = sigHtml(d, await sigIconsReady()), text = sigText(d);
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })]);
+    } catch (e) { toast('Could not copy: ' + e.message); return; }
+    window.open('https://mail.google.com/mail/#settings/general', '_blank', 'noopener');
+    toast('Copied. In Gmail, scroll to Signature, click in the signature box and paste (Ctrl+V), then Save Changes at the bottom.');
+  });
+  // Choose a layout: also offered by itself for a new signature and after Start over.
+  const pickLayout = async (blank) => {
+    const L = await chooseSigLayout(blank ? null : d.lay);
+    if (!L || L.keep) return;
+    if (blank) d = sigBlank();
+    sigApplyLayout(d, L);
+    active = sigOrder(d).find((k) => k !== L.pic) || sigOrder(d)[0]; chosen = null; save(); draw();
+  };
+  undoBtn = el('button', { type: 'button', title: 'Undo (Ctrl+Z)', disabled: '' }, 'Undo');
+  undoBtn.addEventListener('click', undo);
+  // Ctrl+Z undoes the design (typing too).
+  // Listened for on the whole page (the key often goes to the page, not this window), first, so StediMail's own
+  // Ctrl+Z doesn't act behind the designer; gone when the designer closes.
+  const onUndoKey = (e) => {
+    if (!dlg.isConnected) { document.removeEventListener('keydown', onUndoKey, true); return; }
+    if (!dlg.open || document.querySelector('dialog.sig-layouts')) return;
+    // Always the designer's undo, typing included (each word is an undo step): the browser's own undo inside a text
+    // had nothing to undo once the text was redrawn, so the key seemed dead (Paul, 2026-11-19).
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') { e.preventDefault(); e.stopPropagation(); undo(); }
+  };
+  document.addEventListener('keydown', onUndoKey, true);
+  dlg.addEventListener('close', () => document.removeEventListener('keydown', onUndoKey, true));
+  const layoutBtn = el('button', { type: 'button' }, 'Choose a layout\u2026');
+  layoutBtn.addEventListener('click', () => pickLayout(false));
+  const startOver = el('button', { type: 'button' }, 'Start over');
+  startOver.addEventListener('click', () => pickLayout(true));
+  const close = el('button', { type: 'button' }, 'Close');
+  close.addEventListener('click', () => dlg.close());
+  dlg.addEventListener('close', () => dlg.remove());
+  // A picture file dragged in from the computer (Files, the Drawer) goes into the box it's dropped on, made
+  // small enough for Gmail on the way (sigPicture), or fills a waiting "Choose a picture" (Paul, 2026-11-19).
+  const fileCell = (e) => { const n = document.elementsFromPoint(e.clientX, e.clientY).find((m) => m.classList?.contains('sig-rect')); return n && canvas.querySelector(`.sig-cell[data-k="${n.dataset.k}"]`); };
+  let fileOver = null;
+  const fileMark = (cell) => { if (cell !== fileOver) { fileOver?.classList.remove('drop'); cell?.classList.add('drop'); fileOver = cell; } };
+  canvas.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+    fileMark(fileCell(e));
+  });
+  canvas.addEventListener('dragleave', (e) => { if (!canvas.contains(e.relatedTarget)) fileMark(null); });
+  // Missing the boxes must not make the browser open the picture in place of StediMail.
+  for (const t of ['dragover', 'drop']) dlg.addEventListener(t, (e) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); });
+  canvas.addEventListener('drop', async (e) => {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault();
+    const cell = fileCell(e); fileMark(null);
+    const file = [...e.dataTransfer.files].find((f) => f.type.startsWith('image/'));
+    if (!file) { toast('Only a picture can go in a signature'); return; }
+    if (!cell) return;
+    const k = cell.dataset.k;
+    const pic = await sigPicture(file);
+    if (!pic) return;
+    const c = d.groups[k];
+    const waiting = c.items.find((x) => x.type === 'picture' && !x.src);
+    if (waiting) Object.assign(waiting, pic);
+    else { let at = dropIndex(cell, e.clientY); if (at < 0) at = c.items.length; c.items.splice(at, 0, { type: 'picture', ...pic }); }
+    active = k; save(); draw();
+  });
+  dlg.append(el('h2', {}, 'Design a signature'),
+    el('p', { class: 'hint' }, 'Start from a layout (Choose a layout), then drag a line to resize the boxes; drag it to the edge to remove a box. Drag the bottom line up for a footer. Drag a piece from the right into a box, or click it to add it to the chosen box. A picture file can be dragged straight into a box.'),
+    // The settings sit under the signature, beside the pieces on the right (Paul, 2026-11-19).
+    el('div', { class: 'sig-work' }, [el('div', { class: 'sig-left' }, [canvas, alignBar, textBar, count]), tools]),
+    el('div', { class: 'sig-buttons' }, [undoBtn, layoutBtn, startOver, el('span', { class: 'spacer' }), close, copy]), picker);
+  document.body.append(dlg);
+  sigIconsReady().then((x) => { sigIconCache = x; updateCount(); });
+  draw();
+  dlg.showModal();
+}
+// A picture nudged sideways (it.dx px, + = right) as space beside it, which every email program keeps: on its left
+// to go right, on its right to go left; a centred picture needs twice the space to move the distance.
+function sigNudgePad(dx = 0, ax = 'left') {
+  const f = ax === 'center' ? 2 : 1;
+  return [ax === 'right' ? 0 : Math.max(0, dx * f), ax === 'left' ? 0 : Math.max(0, -dx * f)];
+}
+// A picture's size on show: as big as its room lets it be (never bigger than it is), times its own size from the + and
+// − buttons (it.scale, 1 = as it fits).
+function sigPicSize(it, room) {
+  const k = Math.min(1, room.w / it.w, room.h / it.h) * (it.scale ?? 1);
+  return [Math.max(1, Math.round(it.w * k)), Math.max(1, Math.round(it.h * k))];
+}
+// The room a box's pictures have: what its other pieces leave, shared between its pictures.
+function sigPicBox(c, g) {
+  const pics = c.items.filter((x) => x.type === 'picture').length || 1;
+  const used = c.items.filter((x) => x.type !== 'picture')
+    .reduce((n, x) => n + (x.type === 'rule' ? 14 : sigPx(x) * 1.45 * (1 + ((x.text || '').match(/\n/g) || []).length) + 2), 0);
+  return { w: Math.max(16, g.w - 16), h: Math.max(16, (g.h - 10 - used) / pics) };
+}
+// A picture for a signature, at most 400 px. Gmail keeps a pasted picture itself, so it doesn't count toward the
+// 10,000 characters (Paul's own signature has a big logo and works; 2026-11-19 shrinking undone).
+function sigPicture(file) {
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 400 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      res({ src: c.toDataURL(/png|gif|svg/.test(file.type) ? 'image/png' : 'image/jpeg', .85), w: c.width, h: c.height });
+    };
+    img.onerror = () => { toast('That file isn\u2019t a picture StediMail can read'); res(null); };
+    img.src = URL.createObjectURL(file);
+  });
+}
+// A text or link piece's look (the same in the designer and the copied signature). Font: any font on this
+// computer; a recipient without it sees the safe font after it (Arial or Georgia). Shade: 0 (black) to 80 (light
+// gray), as a percent of white. Size in px (Paul, 2026-11-18).
+const SIG_FONTS = ['Arial', 'Helvetica', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Georgia', 'Times New Roman', 'Garamond', 'Courier New'];
+const SIG_SERIF = /georgia|times|garamond|serif|baskerville|palatino|cambria|book/i;
+function sigShade(it) { return it.shade ?? (it.type === 'rule' ? 60 : it.gray ? 42 : 13); }   // a divider line: light gray, as before
+function sigColor(it) { const v = Math.round(sigShade(it) * 2.55).toString(16).padStart(2, '0'); return `#${v}${v}${v}`; }
+function sigFamily(it) {
+  const f = it.font || 'Arial', safe = SIG_SERIF.test(f) && !/sans/i.test(f) ? 'Georgia,serif' : 'Arial,Helvetica,sans-serif';
+  return (/^(Arial|Georgia)$/.test(f) ? '' : `'${f.replace(/['"\\;]/g, '')}',`) + safe;
+}
+// Line spacing, per box (Paul, 2026-11-19): 0.1 to 1.5 times the normal space between lines (1 = as before,
+// line-height 1.45). It scales the gap only, so even 0.1 never lets lines overlap.
+const SIG_SPACINGS = [.1, .25, .5, .75, 1, 1.25, 1.5, 1.75, 2];   // 1.75 and 2 added (Paul, 2026-11-19)
+const sigLineHeight = (ls = 1) => +(1 + .45 * ls).toFixed(3);
+function sigFont(it, ls = 1) {
+  return `font-family:${sigFamily(it)};font-size:${sigPx(it)}px;line-height:${sigLineHeight(ls)};font-weight:${it.bold ? 700 : 400};color:${sigColor(it)}` +
+    (it.italic ? ';font-style:italic' : '') + (it.underline ? ';text-decoration:underline' : '') + (it.caps ? ';text-transform:uppercase;letter-spacing:.04em' : '');
+}
+// The signature as Gmail keeps it: plain tables, sizes and alignment written on each cell, simple styles only.
+// The columns of boxes side by side, then the footer under them.
+// The signature as Gmail keeps it: one table on a grid of every line's position, each box's rectangles as cells
+// spanning the grid's rows and columns, a box's pieces in its biggest one; sizes and alignment on each cell.
+function sigHtml(d, iconPngs = {}) {
+  const piece = (it, room, ls) => {
+    const font = sigFont(it, ls);
+    if (it.type === 'text') {
+      const t = it.text?.trim();
+      if (!t) return '';
+      const show = (x) => escapeHtml(it.caps ? x.toUpperCase() : x).replace(/\n/g, '<br>');   // real capitals: some email programs ignore the style
+      const bar = '<span style="color:#b0b4ba;padding:0 6px">|</span>';                         // the vertical line between two things
+      // Contact lines do what they say when clicked (Paul, 2026-11-19): a phone number calls, an email address
+      // writes, an address opens in Google Maps (the Maps app on a phone), a website opens. In the line's own
+      // color, like the rest of the contact lines (Paul's example). Parts split by "|" each get their own link.
+      const link = (href, html) => `<a href="${escapeHtml(href)}" style="color:${sigColor(it)};text-decoration:none">${html}</a>`;
+      const parts = t.split(/\s*\|\s*/);
+      const one = (x) => {
+        if (it.line === 'phone') {
+          const dial = x.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+          return dial.replace(/\D/g, '').length >= 7 ? link('tel:' + dial, show(x)) : show(x);
+        }
+        if (it.line === 'email') { const m = x.match(/[^\s<>"]+@[^\s<>"]+\.[^\s<>"]+/); return m ? link('mailto:' + m[0], show(x)) : show(x); }
+        if (it.line === 'web') { const m = x.match(/(https?:\/\/)?[^\s]+\.[a-z]{2,}[^\s]*/i); return m ? link(/^https?:/i.test(m[0]) ? m[0] : 'https://' + m[0], show(x)) : show(x); }
+        return show(x);
+      };
+      let words = it.line === 'address'
+        ? link('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(parts.join(', ')), parts.map(show).join(bar))
+        : parts.map(one).join(bar);
+      const pic = it.line && iconPngs[it.line], s = Math.round(sigPx(it) * 1.1);
+      return `<div style="${font}">${pic ? `<img src="${pic}" width="${s}" height="${s}" alt="" style="width:${s}px;height:${s}px;border:0;vertical-align:-2px;margin-right:6px">` : ''}${words}</div>`;
+    }
+    if (it.type === 'rule') return `<div style="border-top:1px solid ${sigColor(it)};height:1px;line-height:1px;font-size:1px;margin:${Math.round(6 * (ls ?? 1))}px 0">&nbsp;</div>`;
+    if (it.type === 'link') {
+      if (!it.url && !it.text?.trim()) return '';
+      const href = /^[a-z]+:/i.test(it.url || '') ? it.url : it.url?.includes('@') ? 'mailto:' + it.url : 'https://' + (it.url || '');
+      const words = it.text?.trim() || it.url;
+      return `<div style="${font}"><a href="${escapeHtml(href)}" style="color:#1a73e8;text-decoration:underline">${escapeHtml(it.caps ? words.toUpperCase() : words)}</a></div>`;
+    }
+    if (!it.src) return '';                                          // a dropped picture not chosen yet
+    const [w, h] = sigPicSize(it, room), [pl, pr] = sigNudgePad(it.dx, room.ax), [pt, pb] = sigNudgePad(it.dy, { top: 'left', middle: 'center', bottom: 'right' }[room.ay]);
+    return `<div style="padding:${pt}px ${pr}px ${pb}px ${pl}px"><img src="${it.src}" width="${w}" height="${h}" alt="" style="display:inline-block;width:${w}px;height:${h}px;border:0"></div>`;
+  };
+  const T = '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">';
+  const xs = [...new Set(d.rects.flatMap((r) => [sigR4(r.x0), sigR4(r.x1)]))].sort((a, b) => a - b);
+  const ys = [...new Set(d.rects.flatMap((r) => [sigR4(r.y0), sigR4(r.y1)]))].sort((a, b) => a - b);
+  const colW = xs.slice(1).map((x, i) => Math.round(x * SIG_W) - Math.round(xs[i] * SIG_W));
+  const idx = (list, v) => list.findIndex((u) => sigNear(u, v));
+  const spacer = '<tr>' + colW.map((w) => `<td width="${w}" style="width:${w}px;height:0;padding:0;font-size:0;line-height:0"></td>`).join('') + '</tr>';
+  const rows = ys.slice(0, -1).map((y) => '<tr>' + d.rects.filter((r) => sigNear(r.y0, y)).sort((a, b) => a.x0 - b.x0).map((r) => {
+    const cs = idx(xs, r.x1) - idx(xs, r.x0), rs = idx(ys, r.y1) - idx(ys, r.y0);
+    const w = Math.round(r.x1 * SIG_W) - Math.round(r.x0 * SIG_W), h = Math.round(r.y1 * SIG_H) - Math.round(r.y0 * SIG_H);
+    const span = (cs > 1 ? ` colspan="${cs}"` : '') + (rs > 1 ? ` rowspan="${rs}"` : '');
+    const c = d.groups[r.g];
+    if (sigMain(d, r.g) !== r) return `<td${span} width="${w}" height="${h}" style="width:${w}px;height:${h}px;padding:0">&nbsp;</td>`;
+    const room = { ...sigPicBox(c, { w, h }), ax: c.ax, ay: c.ay };   // ax, ay: for a nudged picture
+    return `<td${span} width="${w}" height="${h}" align="${c.ax}" valign="${c.ay}" style="width:${w}px;height:${h}px;padding:4px 8px;text-align:${c.ax};vertical-align:${c.ay}">` +
+      (c.items.map((it) => piece(it, room, c.ls)).join('') || '&nbsp;') + '</td>';
+  }).join('') + '</tr>').join('');
+  return T + spacer + rows + '</table>';
+}
+function sigText(d) {
+  return sigOrder(d).flatMap((g) => d.groups[g].items.map((it) => (it.type === 'text' ? it.text?.trim() : it.type === 'link' ? [it.text?.trim(), it.url].filter(Boolean).join(': ') : ''))).filter(Boolean).join('\n');
+}
+
+
 let ownName = null;
 function loadOwnName() {
   ownName ||= api('/settings/sendAs').then((r) => (r.sendAs || []).find((x) => x.isPrimary)?.displayName || '').catch(() => '');
@@ -4816,6 +5854,10 @@ function openCompose(draft = null) {
   const headers = () => ({ To: to.value.trim(), Subject: subject.value });
   const me = {
     threadId: null,
+    pending: () => !!draftId || (dirty && !!(to.value.trim() || subject.value.trim() || !rich.isEmpty())),
+    changed: () => dirty,
+    hasDraft: () => !!draftId,
+    async discard() { if (draftId) await api(`/drafts/${draftId}`, { method: 'DELETE' }); draftId = null; },
     async save() {
       if (!dirty) return;
       if (!to.value.trim() && !subject.value.trim() && rich.isEmpty()) {   // emptied: drop the old draft
@@ -4834,6 +5876,7 @@ function openCompose(draft = null) {
     if (!to.value.trim()) { to.focus(); return; }
     if (rich.notReady()) { toast(rich.notReady()); return; }
     send.disabled = true;
+    if (draft || draftId) closeDraftsFolder();      // the draft is done: Drafts closes at Send, not after Undo's wait (Paul, 2026-11-19)
     const c = rich.content(), h = headers();                      // what was there when Send was clicked
     const fields = [to, subject];
     const unlock = () => {
@@ -6221,21 +7264,31 @@ function boardButtonLines(head, ...where) {
     el('span', { class: 'save-where' }, where.map((t) => el('span', { class: 'save-line', 'data-line': t }, t)))];
 }
 
-function askChoice(message, answers, focus = answers.length - 1) {
+function askChoice(message, answers, focus = answers.length - 1, { near = null, right = false } = {}) {
   return new Promise((resolve) => {
-    const dlg = el('dialog', { class: 'ask', 'aria-label': message });
+    const dlg = el('dialog', { class: right ? 'ask ask-right' : 'ask', 'aria-label': message });
     let done = false;
     const finish = (key) => { if (done) return; done = true; dlg.close(); dlg.remove(); resolve(key); };
-    const buttons = answers.map(([key, label, cls]) => {
+    // An answer without a label gets no button: it's only what Esc or a click outside means.
+    const buttons = answers.filter(([, label]) => label).map(([key, label, cls]) => {
       const b = el('button', { type: 'button', class: cls || null }, label);
       b.addEventListener('click', () => finish(key));
       return b;
     });
     dlg.append(el('p', {}, message), el('div', { class: 'ask-buttons' }, buttons));
     dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(answers[0][0]); });
+    // Chrome closes a dialog itself on a repeated Esc with no click between, without 'cancel': without this the
+    // question never got its answer and every later Esc and ✕ waited on it (Paul, 2026-11-19).
+    dlg.addEventListener('close', () => finish(answers[0][0]));
     dlg.addEventListener('click', (e) => { if (e.target === dlg) finish(answers[0][0]); });
     document.body.append(dlg);
     dlg.showModal();
+    if (near && near.x >= 0) {                        // just below the pointer, as askConfirm does
+      const r = dlg.getBoundingClientRect();
+      dlg.classList.add('near');
+      dlg.style.left = Math.max(8, Math.min(near.x - r.width / 2, innerWidth - r.width - 8)) + 'px';
+      dlg.style.top = Math.max(8, Math.min(near.y + 16, innerHeight - r.height - 8)) + 'px';
+    }
     buttons[focus].focus();
   });
 }
@@ -6804,7 +7857,15 @@ function onKey(e) {
   if (e.key === 'Escape' && state.armedDelete) { disarmDelete(); return; }
   if (e.key === 'Escape' && $('#color-pop')) { closeColorPicker(); return; }
   if (e.key === 'Escape' && $('#menu')) { closeMenu(); return; }
-  if (e.key === 'Escape' && !$('#reader').hidden) { closeReader(); return; }
+  if (e.key === 'Escape' && !$('#reader').hidden) {
+    // Asks first while writing. The question opens once Esc is let go: opened during the press, Chrome gave
+    // that same Esc to the question and shut it at once (Paul, 2026-11-19: "Esc doesn't work anymore").
+    // Esc pressed inside an email's own page comes here as a plain { key, target } (no key events to wait for).
+    if (typeof e.preventDefault !== 'function') { leaveThen(closeReader)(); return; }
+    e.preventDefault();
+    addEventListener('keyup', (u) => { if (u.key === 'Escape') leaveThen(closeReader)(); }, { once: true });
+    return;
+  }
   if (e.key === 'Escape' && state.selected.size) { clearSelection(); return; }
   // Delete / Backspace: the card under the mouse (highlighted) goes to Trash; else the focused card.
   if ((e.key === 'Delete' || e.key === 'Backspace') && !e.ctrlKey && !e.metaKey && !e.altKey
@@ -6837,7 +7898,7 @@ function onKey(e) {
     moveWithUndo(id, Number(e.key) - 1);
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    openThread(id);
+    leaveThen(() => openThread(id))();
   } else if (e.key === 'e') {
     archiveThread(id);
   } else if (e.key === 'u') {
@@ -6928,7 +7989,7 @@ function setupSearchSuggest() {
     el('span', { class: 'suggest-text' }, [el('span', { class: 'suggest-label' }, highlight(t.subject, q)),
       el('span', { class: 'suggest-sub' }, highlight(t.people, q))]),
     el('span', { class: 'suggest-meta' }, [t.attachments ? icon('clip') : null, dateLabel(t.date)]),
-    () => { close(); openThread(t.id); });
+    () => { close(); leaveThen(() => openThread(t.id))(); });
   const matches = (t, q) => [t.subject, t.people, t.snippet].some((x) => (x || '').toLowerCase().includes(q));
   const localEmails = (q) => [...state.threads.values(), ...cache.values()].filter((t) => matches(t, q))
     .sort((a, b) => b.date - a.date).filter((t, i, a) => a.findIndex((x) => x.id === t.id) === i).slice(0, 5);
@@ -7000,7 +8061,7 @@ function wireUi() {
   $('#btn-signin').addEventListener('click', signIn);
   $('#banner-btn').addEventListener('click', signIn);
   $('#btn-refresh').addEventListener('click', loadBoard);
-  $('#btn-compose').addEventListener('click', () => openCompose());
+  $('#btn-compose').addEventListener('click', leaveThen(() => openCompose()));
   $('#btn-report').addEventListener('click', openReport);
   $('#btn-menu').addEventListener('click', () => setSidebar(!state.sidebarOpen));
   $('#search-form').addEventListener('submit', (e) => { e.preventDefault(); runSearch($('#search').value); });
@@ -7008,7 +8069,7 @@ function wireUi() {
   // The browser's built-in ✕ in the search box empties it without submitting.
   $('#search').addEventListener('search', () => { if (!$('#search').value) clearSearch(); });
   $('#btn-settings').addEventListener('click', openSettings);
-  $('#btn-tasks').addEventListener('click', () => (tasks.open ? closeTasks() : openTasks()));
+  $('#btn-tasks').addEventListener('click', () => (tasks.open ? closeTasks() : leaveThen(openTasks)()));
   $('#settings form').addEventListener('submit', (e) => {
     if (e.submitter?.value !== 'save') return;
     const result = readSettingsForm();

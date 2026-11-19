@@ -673,6 +673,12 @@ dialog.ask { max-width: 460px; width: calc(100% - 32px); border-radius: 14px; pa
 dialog.ask:not(.task-edit):has(.save-to) { width: fit-content; min-width: min(460px, calc(100% - 32px)); max-width: calc(100% - 32px); }
 dialog.ask p { margin: 0 0 10px; font-size: 17px; line-height: 1.45; }
 dialog.ask p.hint { font-size: 15px; opacity: .8; }
+dialog.ask.ask-right { width: fit-content; min-width: 0; }   /* Save to drafts?: the question on the right, over its buttons */
+dialog.ask.ask-right { padding: 14px 16px; }   /* a snug box (Paul, 2026-11-19) */
+dialog.ask.ask-right p { text-align: center; font-size: 19px; margin: 0; }   /* bigger, centred over the buttons */
+dialog.ask.ask-right .ask-buttons { justify-content: center; margin-top: 10px; }
+dialog.ask.ask-right .ask-buttons button { width: 56px; padding: 10px 0; text-align: center; font-size: 17.6px; }   /* Yes the size of No; words 10% bigger (Paul, 2026-11-19) */
+dialog.ask.ask-right .ask-buttons button:not(.danger) { border-color: #8a8f98; }   /* No's edge shows, so it reads the same size as the red Yes */
 .ask-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .ask-buttons button { padding: 10px 18px; font-size: 16px; }
 .ask-buttons button.save-to { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
@@ -1093,3 +1099,226 @@ dialog.ask.near { position: fixed; margin: 0; }
 }
 /* Only the board's bottom slider moves sideways; a column never gets one of its own (Paul, 2026-11-18). */
 .cards { overflow-x: hidden; }
+
+/* Signature designer (Paul, 2026-11-18). The signature area is white, as most people see email. */
+dialog.sig-designer { width: auto; max-width: calc(100% - 32px); padding: 20px 22px; }
+dialog.sig-designer h2 { margin: 0 0 4px; }
+dialog.sig-designer .hint { margin: 0 0 12px; color: var(--muted); font-size: .9rem; max-width: 640px; }
+.sig-work { display: flex; gap: 14px; align-items: flex-start; }
+.sig-left { display: flex; flex-direction: column; gap: 4px; width: 604px; }   /* the signature, then its settings under it */
+.sig-canvas { position: relative; flex: none; background: #fff; color: #222; border: 2px solid var(--muted); border-radius: 4px; font: 14px/1.4 Arial, Helvetica, sans-serif; }
+.sig-cell { position: absolute; display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; overflow: hidden; outline: 1px dashed #c8ccd2; outline-offset: -1px; }
+.sig-cell.active { outline: 2px solid #9fbf5a; outline-offset: -2px; }
+.sig-cell.drop { background: #eef5dd; }
+.sig-empty { color: #9aa0aa; font-size: 12px; align-self: center; margin: auto; text-align: center; pointer-events: none; }
+.sig-piece { position: relative; display: flex; align-items: center; gap: 0; max-width: 100%; }
+.sig-grip { cursor: grab; color: #9aa0aa; font-size: 14px; user-select: none; opacity: 0; }
+.sig-del { all: unset; cursor: pointer; color: #c62828; font-size: 13px; padding: 0 3px; opacity: 0; }
+.sig-piece:hover .sig-grip, .sig-piece:hover .sig-del, .sig-piece:focus-within .sig-grip, .sig-piece:focus-within .sig-del { opacity: 1; }
+/* The handle and ✕ take no room, so they never push a piece off its Left/Center/Right place (Paul, 2026-11-19):
+   beside a text, in the box's margin; inside a picture's top corners, on a white backing. */
+.sig-grip, .sig-del { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; }
+.sig-grip { right: 100%; }
+.sig-del { left: 100%; }
+.sig-piece.sig-picture .sig-grip, .sig-piece.sig-picture .sig-del { top: 3px; transform: none; background: rgba(255, 255, 255, .9); border-radius: 4px; padding: 0 3px; line-height: 18px; }
+.sig-piece.sig-picture .sig-grip { right: auto; left: 3px; }
+.sig-piece.sig-picture .sig-del { left: auto; right: 3px; }
+.sig-text, .sig-link { min-width: 4rem; outline: none; border-bottom: 1px dashed transparent; white-space: pre-wrap; }
+.sig-text:focus, .sig-link:focus { border-bottom-color: #9fbf5a; }
+.sig-text:empty::before, .sig-link:empty::before { content: attr(data-placeholder); color: #9aa0aa; }
+.sig-link { color: #1a73e8; text-decoration: underline; }
+.sig-linkbox { display: flex; flex-direction: column; gap: 2px; }
+.sig-url { display: none; font-size: 12px; min-height: 0; padding: 2px 6px; width: 220px; background: #fff; color: #222; border: 1px solid #c8ccd2; border-radius: 4px; }
+.sig-link-piece:focus-within .sig-url, .sig-piece.sig-link:focus-within .sig-url { display: block; }
+.sig-img { display: block; }
+/* A picture dropped from the bar, waiting for a click to choose the file (Paul, 2026-11-19). */
+.sig-pick { display: block; padding: .5rem .8rem; border: 1.5px dashed #1a73e8; border-radius: 6px; background: #fff; color: #1a73e8; font: 600 .9rem/1.3 system-ui, sans-serif; cursor: pointer; }   /* the signature area is always white */
+.sig-pick:hover { background: #e8f0fe; text-decoration: underline; }
+.sig-line { position: absolute; z-index: 2; background: #5b8a2e; touch-action: none; }
+.sig-line.v { width: 4px; margin-left: -2px; cursor: col-resize; }
+.sig-line.h { height: 4px; margin-top: -2px; cursor: row-resize; }
+.sig-line::after { content: ''; position: absolute; inset: -6px; }             /* a wider place to grab */
+.sig-line.at-edge { background: #5b8a2e; opacity: .55; }
+.sig-line.tab { border-radius: 3px; opacity: .8; z-index: 3; }   /* a parked line: a short tab to drag back out */
+.sig-line:hover { background: #7fae3f; opacity: 1; }
+.sig-tools { display: flex; flex-direction: column; gap: 8px; }
+.sig-tool { display: flex; align-items: center; gap: 8px; min-width: 120px; min-height: 48px; font-size: 1rem; font-weight: 600; cursor: grab; }
+.sig-tool-glyph { width: 24px; text-align: center; font-size: 1.15rem; }
+.sig-align { display: flex; align-items: center; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.sig-align button { min-height: 34px; padding: 0 .7rem; }
+.sig-align button.current { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.sig-align .sep { width: 10px; }
+.sig-align-label { color: var(--muted); font-size: .9rem; margin-right: 4px; }
+.sig-count { display: block; color: #e57373; font-size: .85rem; margin-top: 6px; }
+.sig-count:empty { display: none; }
+.sig-buttons { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
+.sig-buttons .spacer { flex: 1; }
+.sig-copy { min-height: 52px; font-size: 1.05rem; padding: 0 1.4rem; }
+.sig-boxes { position: absolute; inset: 0; }
+.sig-tools-head { margin-top: 6px; color: var(--muted); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.sig-tool svg { width: 22px; height: 22px; fill: currentColor; flex: none; margin: 0 1px; }
+.sig-tool { min-height: 40px; }
+.sig-line-text { display: flex; align-items: center; gap: 6px; }
+.sig-line-icon { width: 14px; height: 14px; flex: none; fill: #6b6f76; }
+.sig-piece.sig-rule { align-self: stretch; flex: none; margin: 0; height: auto; border: 0; }   /* the piece is as wide as the box, never taller than its line (it swallowed the box's spare height, 2026-11-19) */
+.sig-rule-line { flex: 1; border-top: 1px solid #9aa0aa; height: 0; margin: 6px 0; }   /* the line inside a divider piece (its own name: .sig-rule is the piece) */
+.sig-textbar { margin-top: 6px; }
+.sig-font-wrap, .sig-shade { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 6px !important; color: var(--muted); font-size: .9rem; }
+.sig-font { min-height: 34px; max-width: 200px; }
+.sig-shade input { width: 130px; accent-color: #9fbf5a; }
+.sig-shade-end { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border); }
+.sig-shade-end.black { background: #000; } .sig-shade-end.light { background: #ccc; }
+/* (2026-11-18, later) pointer dragging, the footer line, size and shade sliders with their numbers */
+.sig-tool { touch-action: none; user-select: none; }
+.sig-grip { touch-action: none; cursor: grab; }
+.sig-ghost { position: fixed; z-index: 10; pointer-events: none; padding: 4px 10px; border-radius: 8px; background: #9fbf5a; color: #1b1d21; font-weight: 600; font-size: .9rem; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+.sig-line.foot { background: #8a6d2e; }
+.sig-line.foot:hover { background: #b08a3a; }
+.sig-textbar { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.sig-textbar .sig-align { margin-top: 0; }
+.sig-slider { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 8px !important; color: var(--muted); font-size: .9rem; }
+.sig-slider input[type=range] { width: 200px; accent-color: #9fbf5a; }
+.sig-slider input[type=range].shade { background: linear-gradient(to right, #000, #ccc); border-radius: 4px; height: 8px; }
+.sig-num { width: calc(3ch + 22px); min-height: 32px; padding: 0 10px; text-align: center; -moz-appearance: textfield; }   /* three digits and padding (Paul, 2026-11-19) */
+.sig-num::-webkit-inner-spin-button, .sig-num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.sig-swatch { flex: none; width: 32px; height: 32px; border-radius: 4px; border: 1px solid #fff; box-shadow: 0 0 0 1px #8a8f98; }   /* the shade's sample square, on white like the signature */
+.sig-unit { color: var(--muted); }
+/* (2026-11-18, joints) rectangles of boxes; lines are per section; a highlight shows how much of a line moves */
+.sig-rect { position: absolute; display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; overflow: hidden; }
+.sig-rect.active { background: #f4f8ea; }
+.sig-cell { outline: none !important; }
+.sig-lines { position: absolute; inset: 0; pointer-events: none; }
+.sig-lines .sig-line { pointer-events: auto; }
+
+/* Choose a layout: the signature designer's opening screen (Paul, 2026-11-19) */
+dialog.ask.sig-layouts { width: min(900px, calc(100% - 32px)); max-width: none; }
+dialog.ask.sig-layouts h2 { margin: 0 0 6px; }
+dialog.ask.sig-layouts p.small { font-size: 13px; margin-top: 14px; }
+.sig-lay-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 12px; }
+.sig-lay-opt { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 2px solid var(--border); border-radius: 12px; background: var(--bg, #1c1f25); color: var(--text); text-align: center; }
+.sig-lay-opt.on { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.sig-lay-name { font-weight: 600; font-size: 15px; }
+.sig-lay-thumb { position: relative; height: 110px; background: #fff; border-radius: 6px; overflow: hidden; }
+.sig-lay-box { position: absolute; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 5px; padding: 6px 9px; box-sizing: border-box; }
+.sig-lay-pic { align-self: stretch; flex: 1; max-height: 70px; max-width: 110px; background: #d9dde3; border-radius: 4px; color: #6b6f76; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+.sig-lay-bar { height: 6px; border-radius: 3px; background: #9aa0aa; }
+.sig-lay-bar.dark { height: 8px; background: #3a3e48; }
+.sig-lay-bar.thin { height: 4px; }
+.sig-lay-line { position: absolute; background: #5b8a2e; }
+.sig-lay-line.v { width: 3px; margin-left: -1px; }
+.sig-lay-line.h { height: 3px; margin-top: -1px; }
+.sig-lay-line.foot { background: #8a6d2e; }
+/* Line spacing button in the Chosen box row (Paul, 2026-11-19) */
+.sig-spacing { display: inline-flex; align-items: center; gap: 6px; }
+.sig-spacing-icon { width: 20px; height: 20px; fill: currentColor; }
+.sig-align button.sig-spacing { padding: 0 .45rem; gap: 9px; min-width: 78px; justify-content: center; }   /* room for "0.25" without wrapping */
+.sig-align:has(.sig-spacing) .sep { width: 4px; }
+.sig-spacing-pop { position: fixed; z-index: 10; display: flex; flex-direction: column; min-width: 150px; padding: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+.sig-spacing-head { color: var(--muted); font-size: .8rem; padding: 4px 10px 6px; }
+.sig-spacing-pop button { display: flex; align-items: center; gap: 8px; border: 0; background: transparent; text-align: left; padding: 8px 10px; min-height: 36px; }
+.sig-spacing-pop button:hover, .sig-spacing-pop button:focus-visible { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.sig-spacing-pop .tick { width: 1em; color: var(--accent); }
+.sig-spacing-pop .note { color: var(--muted); font-size: .85rem; }
+.sig-align:has(.sig-spacing) button:not(.sig-spacing) { padding: 0 .58rem; }   /* the Chosen box row fits on one line with the spacing button */
+.sig-lines .sig-joint { pointer-events: auto; }
+/* Every handle (a parked line, the place to pull an extra line from, where lines meet): a small + circle on the
+   line (Paul, 2026-11-19) */
+.sig-lines .sig-knob { pointer-events: auto; position: absolute; z-index: 4; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #fff; border: 2px solid #5b8a2e; color: #5b8a2e; font: 700 14px/14px system-ui, sans-serif; text-align: center; cursor: move; touch-action: none; user-select: none; box-sizing: border-box; }
+.sig-lines .sig-knob:hover { background: #5b8a2e; color: #fff; }
+.sig-lines .sig-knob:not(.show):not(:hover) { opacity: 0; }   /* hidden until the pointer is on its line */
+.sig-lines .sig-joint { pointer-events: auto; position: absolute; z-index: 4; width: 16px; height: 16px; margin: -8px 0 0 -8px; background: transparent; border: 0; box-shadow: none; cursor: ew-resize; touch-action: none; }
+.sig-lines .sig-joint::after { content: ''; position: absolute; left: 4px; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: #3f6b1d; box-shadow: 0 0 0 1.5px #fff; }   /* the little dot (Paul, 2026-11-19) */
+.sig-lines .sig-joint:hover::after { background: #7fae3f; }
+.sig-lines .sig-knob::after { content: ''; position: absolute; inset: -6px; }   /* a wider place to grab */
+/* A divider line can be clicked to choose it (its shade), with room to hit it (Paul, 2026-11-19) */
+.sig-rule-line { position: relative; cursor: pointer; outline: none; }
+.sig-rule-line::after { content: ''; position: absolute; left: 0; right: 0; top: -7px; height: 14px; }
+.sig-rule-line:focus { box-shadow: 0 0 0 3px rgba(159, 191, 90, .45); }
+/* Moving a piece: a see-through copy floats with the pointer, a bar shows where it goes (Paul, 2026-11-19) */
+.sig-ghost.float { padding: 4px 8px; background: rgba(255, 255, 255, .92); color: #222; border: 1.5px dashed #5b8a2e; border-radius: 6px; font: 14px/1.4 Arial, Helvetica, sans-serif; font-weight: 400; opacity: .9; }
+.sig-ghost.float .sig-grip, .sig-ghost.float .sig-del { display: none; }
+.sig-ghost.float .sig-rule-line { margin: 6px 0; }
+.sig-insert { position: fixed; z-index: 11; height: 3px; border-radius: 2px; background: #5b8a2e; pointer-events: none; box-shadow: 0 0 0 1px #fff; }
+.sig-piece.moving { opacity: .3; }
+/* A divider's handle and ✕: bigger, on the line's own ends, inside the box (outside it they were cut off) */
+.sig-cell[data-ax] .sig-piece.sig-rule .sig-grip { right: auto; left: 2px; font-size: 18px; line-height: 18px; padding: 0 4px; background: #fff; border: 1px solid #9aa0aa; border-radius: 5px; color: #6b6f76; }
+.sig-cell[data-ax] .sig-piece.sig-rule .sig-del { left: auto; right: 2px; font-size: 15px; line-height: 18px; padding: 0 5px; background: #fff; border: 1px solid #9aa0aa; border-radius: 5px; }
+.sig-grip { font-size: 16px; }
+/* Every piece's handles (⠿ to move, ✕ to remove): a light see-through red (Paul, 2026-11-19) */
+.sig-cell .sig-grip, .sig-cell .sig-del { color: rgba(214, 69, 65, .6); }
+.sig-cell .sig-grip:hover, .sig-cell .sig-del:hover { color: rgba(214, 69, 65, .95); }
+.sig-cell .sig-piece.sig-picture .sig-grip, .sig-cell .sig-piece.sig-picture .sig-del,
+.sig-cell[data-ax] .sig-piece.sig-rule .sig-grip, .sig-cell[data-ax] .sig-piece.sig-rule .sig-del { background: rgba(255, 236, 235, .85); border: 1px solid rgba(214, 69, 65, .35); border-radius: 5px; }
+/* The designer window: just as wide as the signature and the pieces beside it, in the middle of the screen; Close and
+   Copy end at the pieces' right edge (Paul, 2026-11-19). The words at the top wrap to that width. */
+dialog.sig-designer { width: fit-content; margin: auto; }
+dialog.sig-designer > .hint { max-width: none; contain: inline-size; }
+dialog.sig-designer .sig-buttons { flex-wrap: nowrap; }
+/* Every ⠿ handle on the left of its piece, a little bigger; every ✕ on the right (Paul, 2026-11-19). Handles may
+   show a little past their box's edge so one by a box edge isn't cut off. */
+.sig-cell .sig-grip { font-size: 19px; line-height: 1; }
+.sig-rect { overflow: clip; overflow-clip-margin: 16px; }
+/* Every piece's ⠿ and ✕: the divider line's boxed buttons, see-through, lying over the piece's two ends (⠿ over the
+   start, ✕ over the end), shown while the pointer is on the piece (Paul, 2026-11-19). On a picture: its top corners. */
+.sig-cell[data-ax] .sig-piece .sig-grip, .sig-cell[data-ax] .sig-piece .sig-del {
+  top: 50%; transform: translateY(-50%); z-index: 3; padding: 0 4px; line-height: 18px;
+  background: rgba(255, 236, 235, .72); border: 1px solid rgba(214, 69, 65, .4); border-radius: 5px; color: rgba(214, 69, 65, .75); }
+.sig-cell[data-ax] .sig-piece .sig-grip { left: 0; right: auto; font-size: 17px; }
+.sig-cell[data-ax] .sig-piece .sig-del { right: 0; left: auto; font-size: 14px; }
+.sig-cell[data-ax] .sig-piece.sig-picture .sig-grip, .sig-cell[data-ax] .sig-piece.sig-picture .sig-del { top: 3px; transform: none; }
+.sig-cell[data-ax] .sig-piece.sig-picture .sig-grip { left: 3px; }
+.sig-cell[data-ax] .sig-piece.sig-picture .sig-del { right: 3px; }
+/* The ⠿ and ✕ buttons: a 20 px box with the sign in its centre; the whole button (box, edge and sign) half
+   see-through while the pointer is on the piece, nearly solid only on the button itself (Paul, 2026-11-19). */
+.sig-cell[data-ax] .sig-piece .sig-grip, .sig-cell[data-ax] .sig-piece .sig-del {
+  display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 20px; height: 20px; padding: 0; line-height: 1; }
+.sig-cell[data-ax] .sig-piece .sig-grip { font-size: 15px; }
+.sig-cell[data-ax] .sig-piece .sig-del { font-size: 12px; }
+.sig-cell[data-ax] .sig-piece:hover .sig-grip, .sig-cell[data-ax] .sig-piece:hover .sig-del,
+.sig-cell[data-ax] .sig-piece:focus-within .sig-grip, .sig-cell[data-ax] .sig-piece:focus-within .sig-del { opacity: .45; }
+.sig-cell[data-ax] .sig-piece .sig-grip:hover, .sig-cell[data-ax] .sig-piece .sig-del:hover { opacity: .9; }
+.sig-grip svg { width: 14px; height: 14px; fill: currentColor; display: block; pointer-events: none; }
+/* The piece being moved looks like a picture of itself: no box, border or background, its own font, size and
+   shade, see-through, lifted by a faint shadow (Paul, 2026-11-19). */
+.sig-ghost.float { padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; color: inherit; font: 14px/1.4 Arial, Helvetica, sans-serif; opacity: .65; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); }
+.sig-ghost.float .sig-piece { background: transparent; }
+.sig-ghost.float [contenteditable] { border-bottom-color: transparent !important; }
+/* Rolled over: the same button at double strength, nothing else changes (Paul, 2026-11-19). */
+.sig-cell[data-ax] .sig-piece .sig-grip:hover, .sig-cell[data-ax] .sig-piece .sig-del:hover { opacity: .9; background: rgba(255, 236, 235, .72); color: rgba(214, 69, 65, .75); }
+/* A piece too close to its neighbours: its buttons step in, beside theirs (Paul, 2026-11-19) */
+.sig-cell[data-ax] .sig-piece.indent1 .sig-grip { left: 22px; } .sig-cell[data-ax] .sig-piece.indent1 .sig-del { right: 22px; }
+.sig-cell[data-ax] .sig-piece.indent2 .sig-grip { left: 44px; } .sig-cell[data-ax] .sig-piece.indent2 .sig-del { right: 44px; }
+.sig-cell[data-ax] .sig-piece.indent3 .sig-grip { left: 66px; } .sig-cell[data-ax] .sig-piece.indent3 .sig-del { right: 66px; }
+/* More room between the rows of controls under the signature (Paul, 2026-11-19: "all too cramped") */
+dialog.sig-designer .sig-left > .sig-align { margin-top: 30.45px; }   /* +5% (Paul, 2026-11-19) */
+dialog.sig-designer .sig-textbar { gap: 27.3px; margin-top: 27.3px; }   /* +5% */
+/* 60% more room, and a thin line across the middle of each gap between the rows (Paul, 2026-11-19) */
+dialog.sig-designer .sig-textbar > .sig-align { position: relative; }
+dialog.sig-designer .sig-textbar > .sig-align::before { content: ''; position: absolute; left: 0; right: 0; top: -13.65px; border-top: 1px solid color-mix(in srgb, var(--border) 95%, #fff); pointer-events: none; }   /* 5% lighter */
+/* A picture's + and − (5% a click): translucent green, one above the other in its middle, shown on hover (Paul, 2026-11-19) */
+.sig-imgwrap { position: relative; display: inline-block; }
+.sig-zooms { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 4px; opacity: 0; transition: opacity .12s; }
+.sig-piece:hover .sig-zooms { opacity: 1; }
+.sig-zoom { all: unset; box-sizing: border-box; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 6px;
+  font: 700 18px/1 system-ui, sans-serif; cursor: pointer; color: rgba(40, 90, 20, .8); background: rgba(159, 191, 90, .45); border: 1px solid rgba(91, 138, 46, .55); }
+.sig-zoom:hover { background: rgba(159, 191, 90, .75); }
+/* ◀ [+ / −] ▶ in the middle of a picture (Paul, 2026-11-19) */
+.sig-zooms { flex-direction: row; align-items: center; gap: 4px; }
+.sig-zoomstack { display: flex; flex-direction: column; gap: 4px; }
+.sig-zooms > .sig-zoom { font-size: 12px; }
+.sig-lay-opt.keep { border-color: #5b8a2e; }   /* "My current layout": keeps the signature as it is */
+/* The designer spaces lines exactly as the copied signature does (Paul, 2026-11-19: Gmail's lines sat closer):
+   no gap between pieces, and the editing underline drawn without taking height. */
+.sig-rect, .sig-cell { gap: 0; }
+.sig-text, .sig-link { border-bottom: 0; }
+.sig-text:focus, .sig-link:focus { box-shadow: inset 0 -1px 0 #9fbf5a; }
+/* The picture's controls as a small cross, above the box lines, shrunk on a small picture (Paul, 2026-11-19) */
+.sig-zooms.cross { display: grid; grid-template-columns: repeat(3, 24px); grid-template-rows: repeat(3, 24px); gap: 3px; z-index: 20;
+  transform: translate(-50%, -50%) scale(var(--zs, 1)); }
+.sig-zooms.cross .sig-zoom { width: 24px; height: 24px; font-size: 12px; }
+.sig-zooms.cross .sig-zoom:nth-child(1) { grid-area: 1 / 1; font-size: 17px; }   /* − */
+.sig-zooms.cross .sig-zoom:nth-child(2) { grid-area: 1 / 2; }                    /* ▲ */
+.sig-zooms.cross .sig-zoom:nth-child(3) { grid-area: 1 / 3; font-size: 17px; }   /* + */
+.sig-zooms.cross .sig-zoom:nth-child(4) { grid-area: 2 / 1; }                    /* ◀ */
+.sig-zooms.cross .sig-zoom:nth-child(5) { grid-area: 2 / 3; }                    /* ▶ */
+.sig-zooms.cross .sig-zoom:nth-child(6) { grid-area: 3 / 2; }                    /* ▼ */
