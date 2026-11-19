@@ -4189,6 +4189,27 @@ function richEditor(placeholder, changed) {
       ...links.map((l) => l.id),
       ...[...editor.querySelectorAll('a[data-drive-file]')].map((a) => a.dataset.driveFile),
     ])],
+    // Forward (Paul, 2026-11-19): the email below the cursor, as Gmail does, with its attachments; off again takes both.
+    forwarded: [],
+    addForward(m) {
+      const html = findPart(m.payload, 'text/html'), text = findPart(m.payload, 'text/plain');
+      const body = html ? cleanHtml(decodePart(html)) : escapeHtml(text ? decodePart(text) : '').replace(/\n/g, '<br>');
+      const line = (k, v) => v ? `${k}: ${escapeHtml(v)}<br>` : '';
+      editor.innerHTML = '<div><br></div><div data-forward="">---------- Forwarded message ---------<br>' + line('From', header(m, 'from')) +
+        line('Date', header(m, 'date')) + line('Subject', header(m, 'subject')) + line('To', header(m, 'to')) + line('Cc', header(m, 'cc')) + '<br>' + body + '</div>';
+      const mine = this.forwarded = [];
+      Promise.all(attachmentsOf(m.payload).map(async (p) => {
+        const r = await api(`/messages/${m.id}/attachments/${p.body.attachmentId}`);
+        return new File([b64urlBytes(r.data)], p.filename, { type: p.mimeType });
+      })).then((got) => { if (this.forwarded !== mine) return; mine.push(...got); files.push(...got); renderChips(); })
+        .catch(() => toast('Could not add the email\u2019s attachments'));
+      changed();
+    },
+    removeForward() {
+      editor.querySelector('[data-forward]')?.remove();
+      for (const f of this.forwarded) { const i = files.indexOf(f); if (i >= 0) files.splice(i, 1); }
+      this.forwarded = []; renderChips(); changed();
+    },
     loadDraft(message) {                            // pick up where Paul left off: text, formatting, attachments
       const html = findPart(message.payload, 'text/html'), text = findPart(message.payload, 'text/plain');
       editor.innerHTML = html ? cleanHtml(decodePart(html)) : escapeHtml(text ? decodePart(text) : '').replace(/\n/g, '<br>');
@@ -4299,18 +4320,51 @@ function renderReplyBox(last, threadId, draft = null) {
   let replyAll = true;
   let draftId = draft?.id || null, dirty = false;
   const rich = richEditor('Click to type', () => { dirty = true; });
-  const who = el('div', { class: 'reply-who' });
+  // Who it goes to, in fields that can be changed: To, Cc and Bcc (Bcc and an empty Cc open from their words)
+  // (Paul, 2026-11-19). Reply all / Reply only fill them in; Forward empties them for a new person.
+  const field = (label) => {
+    const input = el('input', { class: 'reply-addr', autocomplete: 'off', 'aria-label': label });
+    input.addEventListener('input', () => { dirty = true; });
+    const row = el('div', { class: 'reply-row' }, [el('span', { class: 'reply-row-label' }, label), el('div', { class: 'reply-row-field' }, input)]);
+    return { input, row };
+  };
+  const toF = field('To'), ccF = field('Cc'), bccF = field('Bcc');
+  const showCc = el('button', { type: 'button', class: 'reply-ccbcc' }, 'Cc'), showBcc = el('button', { type: 'button', class: 'reply-ccbcc' }, 'Bcc');
+  const openRow = (f, b) => { f.row.hidden = false; b.hidden = true; f.input.focus(); };
+  showCc.addEventListener('click', () => openRow(ccF, showCc));
+  showBcc.addEventListener('click', () => openRow(bccF, showBcc));
+  toF.row.append(el('span', { class: 'reply-ccbcc-wrap' }, [showCc, showBcc]));
+  const who = el('div', { class: 'reply-who' }, [toF.row, ccF.row, bccF.row]);
+  const fill = (to, cc, bcc = '') => {
+    toF.input.value = to; ccF.input.value = cc; bccF.input.value = bcc;
+    ccF.row.hidden = !cc; showCc.hidden = !!cc;
+    bccF.row.hidden = !bcc; showBcc.hidden = !!bcc;
+  };
+  let mode = 'all', subject = '';
   const allBtn = el('button', { type: 'button' }, 'Reply all');
   const oneBtn = el('button', { type: 'button' }, 'Reply only');
-  const setMode = (all) => {
-    replyAll = all;
-    allBtn.classList.toggle('current', all);
-    oneBtn.classList.toggle('current', !all);
-    const h = replyHeaders(last, all);
-    who.textContent = (all ? 'REPLY ALL to: ' : 'REPLY to: ') + [h.To, h.Cc].filter(Boolean).flatMap(splitAddrs).map(nameOf).join(', ');
+  const fwdBtn = el('button', { type: 'button' }, 'Forward');
+  const setMode = (m, refill = true) => {
+    if (mode === 'fwd' && m !== 'fwd') rich.removeForward();
+    mode = m; replyAll = m === 'all';
+    allBtn.classList.toggle('current', m === 'all');
+    oneBtn.classList.toggle('current', m === 'one');
+    fwdBtn.classList.toggle('current', m === 'fwd');
+    const h = replyHeaders(last, m === 'all');
+    if (m === 'fwd') {
+      subject = 'Fwd: ' + header(last, 'subject').replace(/^((re|fwd?):\s*)+/i, '');
+      if (refill) { fill('', ''); rich.addForward(last); setTimeout(() => toF.input.focus()); }
+    } else { subject = h.Subject; if (refill) fill(h.To, h.Cc); }
   };
-  allBtn.addEventListener('click', () => { setMode(true); dirty = true; });
-  oneBtn.addEventListener('click', () => { setMode(false); dirty = true; });
+  // The headers as they stand: the fields as typed; a reply keeps its place in the conversation.
+  const headersNow = () => {
+    const h = replyHeaders(last, true);
+    return { To: toF.input.value.trim(), Cc: ccF.input.value.trim(), Bcc: bccF.input.value.trim(), Subject: subject,
+      ...(mode === 'fwd' ? {} : { 'In-Reply-To': h['In-Reply-To'], References: h.References }) };
+  };
+  allBtn.addEventListener('click', () => { setMode('all'); dirty = true; });
+  oneBtn.addEventListener('click', () => { setMode('one'); dirty = true; });
+  fwdBtn.addEventListener('click', () => { if (mode !== 'fwd') { setMode('fwd'); dirty = true; } });
   // Reply all only makes sense (and is only the default) when it reaches more people than the sender.
   const people = (all) => { const h = replyHeaders(last, all); return [h.To, h.Cc].filter(Boolean).flatMap(splitAddrs).length; };
   const group = people(true) > people(false);
@@ -4319,12 +4373,13 @@ function renderReplyBox(last, threadId, draft = null) {
   const sendBtn = el('button', { type: 'button', class: 'primary' }, 'Send');
   const sendArchive = el('button', { type: 'button' }, 'Send + Archive');
   const doSend = async (archiveAfter) => {
+    if (!toF.input.value.trim() && !ccF.input.value.trim() && !bccF.input.value.trim()) { toF.input.focus(); toast('Who should it go to?'); return; }
     if (rich.isEmpty()) { rich.editor.focus(); return; }
     if (rich.notReady()) { toast(rich.notReady()); return; }
     sendBtn.disabled = sendArchive.disabled = true;
     if (draft || draftId) closeDraftsFolder();      // the draft is done: Drafts closes at Send, not after Undo's wait (Paul, 2026-11-19)
     const was = archiveAfter ? sendArchive : sendBtn, label = was.textContent;
-    const c = rich.content(), h = replyHeaders(last, replyAll);   // what was there when Send was clicked
+    const c = rich.content(), h = headersNow();                    // what was there when Send was clicked
     const unlock = () => {
       rich.editor.contentEditable = 'true';
       sendBtn.disabled = sendArchive.disabled = false;
@@ -4338,7 +4393,7 @@ function renderReplyBox(last, threadId, draft = null) {
         if (state.replyDraft === me) state.replyDraft = null;      // sent: nothing to keep
         if (draftId) await api(`/drafts/${draftId}`, { method: 'DELETE' }).catch(() => {});   // gone before the reload below
         if (draft) closeDraftsFolder();
-        toast('Reply sent');
+        toast(mode === 'fwd' ? 'Forwarded' : 'Reply sent');
         if (held) { if (archiveAfter) await archiveThread(threadId); }     // the email closed at Send already
         else if (archiveAfter) { closeReader(); await archiveThread(threadId); } else openThread(threadId);
         loadBoard();
@@ -4367,11 +4422,15 @@ function renderReplyBox(last, threadId, draft = null) {
   sendBtn.addEventListener('click', () => doSend(false));
   sendArchive.addEventListener('click', () => doSend(true));
 
-  setMode(group);
-  if (draft) {
+  setMode(group ? 'all' : 'one');
+  if (draft) {                                       // a saved reply or forward: as it was left
     rich.loadDraft(draft.message);
-    setMode(group && (!!header(draft.message, 'cc') || splitAddrs(header(draft.message, 'to')).length > 1));
+    const dm = draft.message, fwd = /^fwd?:/i.test(header(dm, 'subject'));
+    setMode(fwd ? 'fwd' : group && (!!header(dm, 'cc') || splitAddrs(header(dm, 'to')).length > 1) ? 'all' : 'one', false);
+    fill(header(dm, 'to'), header(dm, 'cc'), header(dm, 'bcc'));
+    if (fwd) subject = header(dm, 'subject');
   }
+  for (const f of [toF, ccF, bccF]) attachContactSuggest(f.input);
   const me = {
     threadId,
     pending: () => !!draftId || (dirty && !rich.isEmpty()),   // a saved draft always asks (Paul, 2026-11-19)
@@ -4386,7 +4445,7 @@ function renderReplyBox(last, threadId, draft = null) {
       }
       await rich.settled();
       const c = rich.content();
-      draftId = await saveDraft(replyHeaders(last, replyAll), c.text, threadId, draftId, { html: c.html, files: c.files });
+      draftId = await saveDraft(headersNow(), c.text, threadId, draftId, { html: c.html, files: c.files });
       dirty = false;
       toast('Draft saved');
     },
@@ -4394,7 +4453,7 @@ function renderReplyBox(last, threadId, draft = null) {
   state.replyDraft = me;
   const dictation = dictationTools(rich.editor);
   const box = el('div', { class: 'reply' }, [
-    el('div', { class: 'reply-modes' }, [allBtn, oneBtn]), who,
+    el('div', { class: 'reply-modes' }, [allBtn, oneBtn, fwdBtn]), who,
     el('div', { class: 'reply-frame' }, [rich.editor, dictation.center]), rich.chips, rich.emojiPop,
     el('div', { class: 'reply-tools' }, [sendArchive, sendBtn, el('span', { class: 'sep' }), ...rich.formatTools, dictation.toolbar]), rich.picker,
   ]);
@@ -4504,15 +4563,11 @@ function unsubscribeInBody(m, strict = false) {
   }
   return null;
 }
-// The sender's one-click address (RFC 8058). Sent as a form to a new tab, because the page's security
-// rules only let fetch() talk to Google, and that promise is worth keeping. Their reply shows in the tab.
-function postOneClick(url) {
-  const form = el('form', { method: 'POST', action: url, target: '_blank', rel: 'noopener', hidden: '' }, [
-    el('input', { type: 'hidden', name: 'List-Unsubscribe', value: 'One-Click' }),
-  ]);
-  document.body.append(form);
-  form.submit();
-  form.remove();
+// The sender's one-click address (RFC 8058), sent quietly: no tab opens (Paul, 2026-11-19, after first keeping the
+// tab). The page's security rules allow this one kind of call beyond Google (connect-src https: in index.html);
+// the browser doesn't let StediMail read the sender's reply, so success is the request going out.
+async function postOneClick(url) {
+  await fetch(url, { method: 'POST', mode: 'no-cors', credentials: 'omit', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' });
 }
 // A bounce ("Undeliverable", "Delivery Status Notification") of an unsubscribe email we sent goes straight to
 // Spam (Paul, 2026-11-16). Gmail puts a bounce in the same thread as the email it bounced, so: an Inbox thread
@@ -4575,16 +4630,16 @@ function renderUnsubscribe(msgs, threadId) {
   const btn = el('button', { type: 'button', class: 'unsub-btn' }, asked ? `Unsubscribe again (asked ${asked})` : 'Unsubscribe');
   btn.addEventListener('click', async () => {
     if (!await askConfirm(`Unsubscribe from ${name}?\n\nThey should stop sending these emails (some take a few days), and this email goes to Trash.`, 'Unsubscribe', { near: { x: pointer.x, y: pointer.y } })) return;   // just below the pointer (Paul, 2026-11-18)
-    let done = '';
+    let done = '', quiet = false;
     try {
       if (u.oneClick) {
-        postOneClick(u.web);
-        done = `Unsubscribe request sent to ${name}: their reply opened in a new tab.`;
+        await postOneClick(u.web);
+        done = `Unsubscribed from ${name}.`; quiet = true;
       } else if (u.mail) {
         const url = new URL(u.mail);
         const to = decodeURIComponent(url.pathname);
         rememberUnsubSent(await sendMail({ To: to, Subject: url.searchParams.get('subject') || 'unsubscribe' }, url.searchParams.get('body') || 'unsubscribe'));
-        done = `Unsubscribe email sent to ${name} from your Gmail.`;
+        done = `Unsubscribe email sent to ${name} from your Gmail.`; quiet = true;
       } else {
         window.open(u.web, '_blank', 'noopener');
         done = `${name}'s unsubscribe page opened in a new tab: finish there.`;
@@ -4594,7 +4649,9 @@ function renderUnsubscribe(msgs, threadId) {
       store.set('unsubscribed', all);
       btn.textContent = 'Unsubscribe requested';
       btn.disabled = true;
-      // Unsubscribed: the email goes to Trash too (Paul, 2026-11-03); Undo brings the email back.
+      // Done quietly: a light "Done!!" just right of the button for a moment (Paul, 2026-11-19), then the email
+      // goes to Trash too (Paul, 2026-11-03); Undo brings the email back.
+      if (quiet) { btn.after(el('span', { class: 'unsub-done', role: 'status' }, 'Done!!')); await new Promise((r) => setTimeout(r, 2000)); }
       if (threadId) await trashThread(threadId, `${done} The email is in Trash.`);
       else toast(done);
     } catch (e) { if (!(e instanceof AuthError)) toast('Unsubscribe failed: ' + e.message); }

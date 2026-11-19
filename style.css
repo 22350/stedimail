@@ -1341,3 +1341,15 @@ dialog.sig-designer .sig-textbar > .sig-align::before { content: ''; position: a
 .menu .menu-icon { color: var(--text); }
 .menu .menu-icon svg { width: 20px; height: 20px; fill: currentColor; }
 .menu .menu-link { text-decoration: underline; text-underline-offset: 3px; }
+/* A reply's To, Cc and Bcc, changeable (Paul, 2026-11-19) */
+.reply-who { display: flex; flex-direction: column; gap: 4px; text-transform: none; }
+.reply-row { display: flex; align-items: center; gap: 8px; }
+.reply-row[hidden] { display: none; }
+.reply-row-label { flex: none; width: 2.2rem; color: var(--muted); font-size: .9rem; }
+.reply-row-field { flex: 1; min-width: 0; }
+.reply-addr { width: 100%; padding: .35rem .55rem; font-size: .95rem; }
+.reply-ccbcc-wrap { flex: none; display: flex; gap: 2px; }
+.reply-ccbcc { min-height: 30px; padding: 0 .55rem; border: 0; background: transparent; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.reply-ccbcc:hover { color: var(--text); background: transparent; }
+.reply-ccbcc[hidden] { display: none; }
+.unsub-done { margin-left: 10px; color: var(--muted); opacity: .6; font-size: .9rem; font-weight: 400; }   /* very light (Paul, 2026-11-19) */
