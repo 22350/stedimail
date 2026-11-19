@@ -2538,6 +2538,8 @@ function el(tag, attrs = {}, children = []) {
 
 const ICONS = {
   play: 'M8 5v14l11-7z',
+  more: 'M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z',
+  addTask: 'M22 5.18L10.59 16.6l-4.24-4.24 1.41-1.41 2.83 2.83 10-10L22 5.18zM12 20c-4.41 0-8-3.59-8-8s3.59-8 8-8c1.57 0 3.04.46 4.28 1.25l1.45-1.45C16.1 2.67 14.13 2 12 2 6.48 2 2 6.48 2 12s4.48 10 10 10c1.73 0 3.36-.44 4.78-1.22l-1.5-1.5c-1 .46-2.11.72-3.28.72zm7-5h-3v2h3v3h2v-3h3v-2h-3v-3h-2v3z',
   grip: 'M7.1 6a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0M7.1 12a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0M7.1 18a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0M13.1 6a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0M13.1 12a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0M13.1 18a1.9 1.9 0 1 0 3.8 0a1.9 1.9 0 1 0 -3.8 0',   // six dots, drawn so they sit in the middle of the move button (2026-11-19)
   lineSpacing: 'M6 7h2.5L5 3.5 1.5 7H4v10H1.5L5 20.5 8.5 17H6V7zm4-2v2h12V5H10zm0 14h12v-2H10v2zm0-6h12v-2H10v2z',
   check: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
@@ -3950,9 +3952,6 @@ function renderActions(box, id) {
   const t = state.threads.get(id);
   const current = t ? columnOf(t, cols) : -1;
   const color = t && colorOf(t);
-  const colorBtn = el('button', { class: 'icon-btn color-btn', style: color ? `--swatch:${color.bg}` : null,
-    title: color ? `Color: ${color.name}` : 'Color', 'aria-label': color ? `Color: ${color.name}` : 'Color' }, icon('palette'));
-  colorBtn.addEventListener('click', (e) => { e.stopPropagation(); openColorPicker(colorBtn, id); });
   const gmail = el('a', {
     href: `https://mail.google.com/mail/?authuser=${encodeURIComponent(state.me)}#all/${id}`,
     target: '_blank', rel: 'noopener',
@@ -3966,17 +3965,27 @@ function renderActions(box, id) {
       return b;
     }),
     el('span', { class: 'row-break' }),     // the icons always start their own line
-    colorBtn,
-    t?.labels.has('STARRED') ? iconButton('Starred: click to unstar', 'starOn', () => toggleStar(id)) : iconButton('Star', 'star', () => toggleStar(id)),
-    iconButton('Move to folder', 'folder', (b) => openFolderMenu(b, id)),
-    iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, id)),
+    // Gmail's order (Paul, 2026-11-19): Archive, Report spam, Delete | Mark unread, Snooze, Add to Tasks | Move to |
+    // ⋮ More (star, color, open in Gmail). The buttons have no box: just the icon in a full-size place to click.
     iconButton('Archive', 'archive', () => archiveThread(id)),
     iconButton('Report spam', 'spam', () => spamThread(id)),
     iconButton('Delete', 'trash', () => confirmTrash(id)),
+    el('span', { class: 'tool-sep' }),
     t?.unread
       ? iconButton('Mark as read', 'read', () => toggleRead(id))
       : iconButton('Mark as unread', 'unread', () => toggleRead(id)),
-    gmail,
+    iconButton('Snooze', 'clock', (b) => openSnoozeMenu(b, id)),
+    iconButton('Add to Tasks', 'addTask', () => openTaskDialog({ project: GENERAL, title: t?.subject || '',
+      notes: `${t?.subject || 'Email'}: https://mail.google.com/mail/?authuser=${encodeURIComponent(state.me)}#all/${id}` })),
+    el('span', { class: 'tool-sep' }),
+    iconButton('Move to folder', 'folder', (b) => openFolderMenu(b, id)),
+    el('span', { class: 'tool-sep' }),
+    iconButton('More', 'more', (b) => openMenu(b, [
+      t?.labels.has('STARRED') ? { label: 'Remove star', run: () => toggleStar(id) } : { label: 'Add star', run: () => toggleStar(id) },
+      { label: color ? `Color: ${color.name}\u2026` : 'Color\u2026', run: () => openColorPicker(b, id) },
+      { sep: true },
+      { label: 'Open in Gmail', run: () => window.open(gmail.href, '_blank', 'noopener') },
+    ])),
     // Unsubscribe sits right after "Open in Gmail" (Paul, 2026-11-03), kept when this row is redrawn.
     ...(state.unsub?.id === id ? [state.unsub.el] : []),
   );
@@ -7296,7 +7305,7 @@ function askChoice(message, answers, focus = answers.length - 1, { near = null, 
 // opts: { id } to edit, or { project, col } to add (col: the project's first column if left out).
 function openTaskDialog(opts = {}) {
   const editing = opts.id ? findTask(opts.id) : null;
-  const t = editing || { title: '', notes: '', people: [], due: '', dueTime: '', alarm: null, start: '' };
+  const t = editing || { title: opts.title || '', notes: opts.notes || '', people: [], due: '', dueTime: '', alarm: null, start: '' };   // title, notes: from an email (Add to Tasks)
   const title = el('input', { value: t.title, 'aria-label': 'What is the task?', placeholder: 'What is the task?' });
   const notes = el('textarea', { rows: '3', placeholder: 'Outline: what needs doing', 'aria-label': 'Outline' });
   notes.value = t.notes || '';

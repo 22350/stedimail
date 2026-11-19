@@ -1322,3 +1322,9 @@ dialog.sig-designer .sig-textbar > .sig-align::before { content: ''; position: a
 .sig-zooms.cross .sig-zoom:nth-child(4) { grid-area: 2 / 1; }                    /* ◀ */
 .sig-zooms.cross .sig-zoom:nth-child(5) { grid-area: 2 / 3; }                    /* ▶ */
 .sig-zooms.cross .sig-zoom:nth-child(6) { grid-area: 3 / 2; }                    /* ▼ */
+/* The open email's icons, as in Gmail (Paul, 2026-11-19): no box or red outline, just the icon in a full-size place to
+   click (a near miss still hits it), a faint round shade only under the pointer; light gray dividers between groups. */
+#reader-actions .icon-btn { width: 40px; height: 40px; min-height: 40px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text); }
+#reader-actions .icon-btn:hover:not(:disabled) { background: rgba(127, 127, 127, .14); border: 0; }
+#reader-actions .icon-btn svg { width: 20px; height: 20px; }
+#reader-actions .tool-sep { width: 1px; height: 22px; margin: 0 6px; background: rgba(160, 165, 175, .45); align-self: center; }
