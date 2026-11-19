@@ -1396,6 +1396,18 @@ function openMenu(anchor, items) {
         row.append(b);
       }
       menu.append(row);
+    } else if (it.icons) {                              // a row of icon buttons (Paul, 2026-11-19)
+      const row = el('div', { class: 'menu-icons' });
+      for (const x of it.icons) {
+        const b = el('button', { class: 'menu-icon', role: 'menuitem', title: x.label, 'aria-label': x.label }, icon(x.icon));
+        b.addEventListener('click', x.keepOpen ? (e) => { e.stopPropagation(); x.run(b); } : pick(() => x.run(b)));
+        row.append(b);
+      }
+      menu.append(row);
+    } else if (it.link) {                               // a link-looking item, in the board's label green
+      const b = el('button', { class: 'menu-link', role: 'menuitem' }, it.link);
+      b.addEventListener('click', pick(it.run));
+      menu.append(b);
     } else {
       const b = el('button', { class: 'menu-item', role: 'menuitem' }, [el('span', { class: 'tick' }, it.checked ? '✓' : ''), it.label]);
       b.addEventListener('click', pick(it.run));
@@ -3980,11 +3992,13 @@ function renderActions(box, id) {
     el('span', { class: 'tool-sep' }),
     iconButton('Move to folder', 'folder', (b) => openFolderMenu(b, id)),
     el('span', { class: 'tool-sep' }),
+    // ⋮: the star and color as icons, then Open in Gmail as a link (Paul, 2026-11-19).
     iconButton('More', 'more', (b) => openMenu(b, [
-      t?.labels.has('STARRED') ? { label: 'Remove star', run: () => toggleStar(id) } : { label: 'Add star', run: () => toggleStar(id) },
-      { label: color ? `Color: ${color.name}\u2026` : 'Color\u2026', run: () => openColorPicker(b, id) },
-      { sep: true },
-      { label: 'Open in Gmail', run: () => window.open(gmail.href, '_blank', 'noopener') },
+      { icons: [
+        t?.labels.has('STARRED') ? { icon: 'starOn', label: 'Remove star', run: () => toggleStar(id) } : { icon: 'star', label: 'Add star', run: () => toggleStar(id) },
+        { icon: 'palette', label: color ? `Color: ${color.name}` : 'Color', run: () => setTimeout(() => openColorPicker(b, id)) },
+      ] },
+      { link: 'Open in Gmail', run: () => window.open(gmail.href, '_blank', 'noopener') },
     ])),
     // Unsubscribe sits right after "Open in Gmail" (Paul, 2026-11-03), kept when this row is redrawn.
     ...(state.unsub?.id === id ? [state.unsub.el] : []),
