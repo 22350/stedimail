@@ -1734,6 +1734,19 @@ async function checkReturned() {
   store.set('bumps', state.bumps);
 }
 
+// The card buttons come out in two stages (Paul, 2026-11-18): on the card they slide in only as far as the
+// right edge of the label, so the word stays clickable; on the buttons themselves they slide the rest of the way,
+// and back to the label's edge when the mouse leaves them. --peek is how far short of all the way they stop.
+function peekCardActions(card) {
+  const acts = card.querySelector(':scope > .card-actions'), cell = card.querySelector(':scope > .label-cell');
+  if (!acts) return;
+  // Up to the word itself: the drawn "Label" link on an empty field (the field is wider than the word), or the typed label.
+  const field = cell?.querySelector('.card-label'), link = cell?.querySelector('.card-label-link');
+  const word = link && link.offsetWidth ? link : field && field.offsetWidth ? field : null;
+  const labelEnd = word ? cell.offsetLeft + word.offsetLeft + word.offsetWidth - (word === field ? 6 : 0) + 4 : 0;   // the field's own right padding left out
+  acts.style.setProperty('--peek', Math.max(0, Math.min(acts.offsetWidth, labelEnd - acts.offsetLeft)) + 'px');
+}
+
 // A collapsed column can't show a new email, so it turns red until it's opened. New = newer than any email
 // seen on the board, so moving an older card into the column doesn't set it off; Paul's own replies and drafts
 // aren't new mail. The mark survives a reload, and so does what's been seen, so mail that came while
@@ -3337,6 +3350,7 @@ function renderCard(t, colIdx) {
     // Along the bottom of the card, like the "earlier messages" bar in an open email (Paul, 2026-11-17)
     colIdx >= 0 && state.nestKids.has(t.id) ? nestToggle(t.id) : null,
   ]);
+  card.addEventListener('pointerenter', () => peekCardActions(card));
   card.addEventListener('dragover', (e) => {
     const target = nestTargetFor(card, t, colIdx, e);
     if (!target) { if (nestHover.id) clearNestTarget(); return; }

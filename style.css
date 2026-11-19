@@ -294,7 +294,7 @@ a.nav-main { color: var(--text); text-decoration: none; }
   background: transparent; }
 .card-actions .icon-btn { opacity: .85; }
 .card-actions .icon-btn:hover:not(:disabled), .card-actions .icon-btn:focus-visible {
-  opacity: 1; background: color-mix(in srgb, var(--col) 85%, transparent); }
+  opacity: 1; background: transparent; }   /* just brighter, no gray box behind it (Paul, 2026-11-18) */
 .card-actions .icon-btn { width: 36px; min-height: 36px; border-radius: 8px; }   /* less space round the 23 px icons */
 .card-actions .icon-btn svg { width: 23px; height: 23px; }
 /* A blank strip across the top of each card where those buttons appear, so they never cover the sender
@@ -328,7 +328,7 @@ a.nav-main { color: var(--text); text-decoration: none; }
 @media (hover: hover) {
   .label-cell { position: absolute; left: .5rem; bottom: .15rem; max-width: calc(100% - 1rem); }
   /* while the buttons show, the label keeps to the space left of them */
-  .card:hover .label-cell, .card:focus-within .label-cell { max-width: calc(100% - 1rem - 240px); }
+  /* (the label no longer shrinks for the buttons: they stop at its edge instead, see the end of this file) */
   .card .label-cell:has(.card-label:focus) { max-width: calc(100% - 1rem); }   /* typing: the buttons hide, full width */
   .card:has(.card-label:focus) .card-actions { display: none; }
   .card-label { field-sizing: content; width: auto; min-width: 4.5rem; max-width: 100%; height: 36px; }   /* as wide as its text */
@@ -1071,3 +1071,27 @@ dialog.ask.near { position: fixed; margin: 0; }
   0%, 100% { background: #d32f2f; box-shadow: 0 0 0 0 rgba(255, 82, 82, .7); }
   50% { background: #7f1d1d; box-shadow: 0 0 0 6px rgba(255, 82, 82, 0); }
 }
+
+/* Sliders that are always there, not only after the scroll wheel turns (Paul, 2026-11-18): left/right under the
+   columns of the mail and task boards when they're wider than the window, and up/down in each column and the
+   sidebar. Styling them also stops Chrome's overlay scrollbars from hiding. Thumbs are the cards' gray text color. */
+#board::-webkit-scrollbar, .task-cols::-webkit-scrollbar { height: 22px; }
+.cards::-webkit-scrollbar, .sidebar::-webkit-scrollbar { width: 16px; }
+:is(#board, .task-cols, .cards, .sidebar)::-webkit-scrollbar-track { background: color-mix(in srgb, var(--muted) 14%, transparent); border-radius: 11px; }
+:is(#board, .task-cols, .cards, .sidebar)::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--muted) 75%, transparent); border-radius: 11px; border: 4px solid transparent; background-clip: padding-box; min-width: 80px; min-height: 60px; }
+:is(#board, .task-cols, .cards, .sidebar)::-webkit-scrollbar-thumb:hover { background-color: var(--muted); }
+:is(#board, .task-cols, .cards, .sidebar)::-webkit-scrollbar-corner { background: transparent; }
+
+/* Card buttons in two stages (Paul, 2026-11-18). Off the card: slid all the way right, clipped away. On the
+   card: slid in up to the label's right edge (--peek, set in peekCardActions), the rest still clipped at the
+   card's edge. On the buttons: all the way out, over the label. Clip and slide move together, so nothing
+   ever shows past the card's edge, and a clipped-away button can't be clicked. */
+@media (hover: hover) {
+  .card > .card-actions { display: flex; transform: translateX(100%); clip-path: inset(0 100% 0 0); pointer-events: none;
+    transition: transform .22s ease-out, clip-path .22s ease-out; }
+  .card:is(:hover, :focus-within) > .card-actions { transform: translateX(var(--peek, 0px)); clip-path: inset(0 var(--peek, 0px) 0 0); pointer-events: auto; }
+  .card > .card-actions:hover, .card > .card-actions:focus-within { transform: none; clip-path: inset(0 0 0 0); pointer-events: auto; }
+  .card:has(.card-label:focus) > .card-actions { display: none; }
+}
+/* Only the board's bottom slider moves sideways; a column never gets one of its own (Paul, 2026-11-18). */
+.cards { overflow-x: hidden; }
