@@ -4957,6 +4957,7 @@ function applyBarColor(hex) {
 function openSettings() {
   $('#set-barcolor').value = settings.barColor || DEFAULT_BAR;
   $('#set-undosend').value = String(undoSendSeconds());
+  $('#set-theme').value = document.documentElement.classList.contains('light') ? 'light' : 'dark';
   $('#set-columns').replaceChildren(
     columnRow(settings.inboxName, null, true),
     ...settings.columns.map((n) => columnRow(n, n)),
@@ -7003,6 +7004,9 @@ function wireUi() {
     settings.barColor = $('#set-barcolor').value.toLowerCase() === DEFAULT_BAR ? null : $('#set-barcolor').value;
     store.set('barColor', settings.barColor);
     store.set('undoSend', Number($('#set-undosend').value));
+    // Background: one choice for this browser, whoever is signed in (theme.js reads it before the page draws).
+    try { localStorage.setItem('stedimail-theme', $('#set-theme').value); } catch {}
+    document.documentElement.classList.toggle('light', $('#set-theme').value === 'light');
     store.set('stediTaskLink', $('#set-steditask').checked);
     const gWas = gtasksOn();
     store.set('gtasksLink', $('#set-gtasks').checked);

@@ -9,9 +9,10 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=20261118193855">
+<link rel="stylesheet" href="style.css?v=20261118201610">
 <script src="https://accounts.google.com/gsi/client" async></script>
-<script src="app.js?v=20261118193855" defer></script>
+<script src="theme.js?v=20261118201610"></script>
+<script src="app.js?v=20261118201610" defer></script>
 </head>
 <body>
 <header class="bar">
@@ -106,6 +107,13 @@
         <option value="30">30 seconds</option>
       </select>
       <p class="hint">After you click Send, the email closes and a red Undo button counts down to the right of the search box; the email goes when it reaches 0. Undo opens it again to edit. Gmail's own Undo Send setting only works on Gmail's website, so StediMail has its own.</p>
+    </div>
+    <div class="field">
+      <span>Background</span>
+      <select id="set-theme" aria-label="Background">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
     </div>
     <div class="field">
       <span>Title bar color</span>

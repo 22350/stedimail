@@ -3,12 +3,12 @@
   --border: #d5d8de; --accent: #2f6fde; --accent-text: #fff; --drop: #d6e4ff;
   --unread: #2f6fde; --shadow: 0 1px 2px rgba(0,0,0,.08);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16181c; --panel: #22252b; --col: #1c1f24; --text: #e6e8eb; --muted: #9aa0aa;
-    --border: #33373f; --accent: #5b8ff0; --accent-text: #fff; --drop: #24365a;
-    --unread: #7aa5ff; --shadow: none;
-  }
+/* Dark unless Settings → Background says Light (theme.js puts .light on <html> before the page draws).
+   It used to follow the computer's own light/dark setting (Paul, 2026-11-18: an option, dark by default). */
+html:not(.light) {
+  --bg: #16181c; --panel: #22252b; --col: #1c1f24; --text: #e6e8eb; --muted: #9aa0aa;
+  --border: #33373f; --accent: #5b8ff0; --accent-text: #fff; --drop: #24365a;
+  --unread: #7aa5ff; --shadow: none;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -317,12 +317,10 @@ a.nav-main { color: var(--text); text-decoration: none; }
    underlined only while the mouse is on it, like the buttons (Paul, 2026-11-16). */
 .card-label::placeholder { color: #4f8a5c; opacity: 1; font-weight: 400; text-decoration: none; text-underline-offset: 3px; }
 .card-label:hover::placeholder { text-decoration: underline; color: #3f7a4c; }   /* a touch stronger: it does something */
-@media (prefers-color-scheme: dark) {
-  .card-label::placeholder { color: #7fae89; }
-  .card-label:hover::placeholder { color: #a3cfac; }
-}
+:where(html:not(.light)) .card-label::placeholder { color: #7fae89; }
+:where(html:not(.light)) .card-label:hover::placeholder { color: #a3cfac; }
 .card-label { font-weight: 300; font-style: italic; color: var(--text); }   /* the label lighter and italic (Paul, 2026-11-16) */
-@media (prefers-color-scheme: dark) { .card-label { color: #fff; } }   /* white (Paul, 2026-11-16) */
+:where(html:not(.light)) .card-label { color: #fff; }   /* white (Paul, 2026-11-16) */
 .card-label::placeholder { font-style: normal; }
 .card-label:focus { border-color: var(--accent); background: var(--panel); outline: none; }
 @media (hover: hover) {
@@ -345,8 +343,8 @@ a.nav-main { color: var(--text); text-decoration: none; }
   .card:hover .card-label:placeholder-shown:not(:focus) + .card-label-link { display: block; }
 }
 .card-label-link { display: none; }
-@media (hover: hover) and (prefers-color-scheme: dark) {
-  .card-label-link { color: #7fae89; }
+@media (hover: hover) {
+  :where(html:not(.light)) .card-label-link { color: #7fae89; }
 }
 /* Mouse on the word: it brightens to the same color as a hovered card button (Paul, 2026-11-16). */
 @media (hover: hover) {
