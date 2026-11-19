@@ -3977,8 +3977,8 @@ function renderActions(box, id) {
       return b;
     }),
     el('span', { class: 'row-break' }),     // the icons always start their own line
-    // Gmail's order (Paul, 2026-11-19): Archive, Report spam, Delete | Mark unread, Snooze, Add to Tasks | Move to |
-    // ⋮ More (star, color, open in Gmail). The buttons have no box: just the icon in a full-size place to click.
+    // Gmail's order (Paul, 2026-11-19): Archive, Report spam, Delete | Mark unread, Snooze, Add to Tasks |
+    // ⋮ More (star, color, move to folder, open in Gmail). The buttons have no box: just the icon in a full-size place to click.
     iconButton('Archive', 'archive', () => archiveThread(id)),
     iconButton('Report spam', 'spam', () => spamThread(id)),
     iconButton('Delete', 'trash', () => confirmTrash(id)),
@@ -3990,13 +3990,12 @@ function renderActions(box, id) {
     iconButton('Add to Tasks', 'addTask', () => openTaskDialog({ project: GENERAL, title: t?.subject || '',
       notes: `${t?.subject || 'Email'}: https://mail.google.com/mail/?authuser=${encodeURIComponent(state.me)}#all/${id}` })),
     el('span', { class: 'tool-sep' }),
-    iconButton('Move to folder', 'folder', (b) => openFolderMenu(b, id)),
-    el('span', { class: 'tool-sep' }),
-    // ⋮: the star and color as icons, then Open in Gmail as a link (Paul, 2026-11-19).
+    // ⋮: the star, color and Move to folder as icons, then Open in Gmail as a link (Paul, 2026-11-19).
     iconButton('More', 'more', (b) => openMenu(b, [
       { icons: [
         t?.labels.has('STARRED') ? { icon: 'starOn', label: 'Remove star', run: () => toggleStar(id) } : { icon: 'star', label: 'Add star', run: () => toggleStar(id) },
         { icon: 'palette', label: color ? `Color: ${color.name}` : 'Color', run: () => setTimeout(() => openColorPicker(b, id)) },
+        { icon: 'folder', label: 'Move to folder', run: () => setTimeout(() => openFolderMenu(b, id)) },
       ] },
       { link: 'Open in Gmail', run: () => window.open(gmail.href, '_blank', 'noopener') },
     ])),
