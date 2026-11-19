@@ -1337,3 +1337,7 @@ dialog.sig-designer .sig-textbar > .sig-align::before { content: ''; position: a
 .menu-link:hover { text-decoration: underline; color: #3f7a4c; background: transparent; }
 :where(html:not(.light)) .menu-link { color: #7fae89; }
 :where(html:not(.light)) .menu-link:hover { color: #a3cfac; }
+/* ⋮ menu icons: the toolbar's color and size; Open in Gmail always underlined (Paul, 2026-11-19) */
+.menu .menu-icon { color: var(--text); }
+.menu .menu-icon svg { width: 20px; height: 20px; fill: currentColor; }
+.menu .menu-link { text-decoration: underline; text-underline-offset: 3px; }
