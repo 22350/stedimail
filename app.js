@@ -6480,6 +6480,20 @@ function openTasks() {
   renderUndo();
   if (!tasks.synced) pullTasks();
   syncGoogleTasks();
+  offerGoogleTasks();
+}
+
+// The first time StediTask opens, asked once (Paul, 2026-11-19): link to Google Tasks? Off by default (it needs
+// Google's Tasks permission and puts lists in Google Tasks); the same switch stays in Settings either way.
+async function offerGoogleTasks() {
+  if (store.get('gtasksAsked', false) || gtasksOn()) return;
+  store.set('gtasksAsked', true);
+  const choice = await askChoice('Link StediTask to Google Tasks, so your tasks show in Google Tasks on your phone too?',
+    [['no', 'Not now'], ['yes', 'Link to Google Tasks', 'primary']]);
+  if (choice !== 'yes') { toast('You can link them any time in Settings'); return; }
+  store.set('gtasksLink', true);
+  gtasksSignIn().then(() => { toast('Linking StediTask to Google Tasks\u2026'); syncGoogleTasks(); },
+    (e) => { store.set('gtasksLink', false); toast('Google Tasks not linked: ' + e.message); });
 }
 
 function closeTasks() {
