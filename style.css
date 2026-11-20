@@ -500,6 +500,10 @@ body.reader-resizing, body.reader-resizing * { cursor: ew-resize !important; use
 .reply-editor:focus { border-color: var(--accent); }
 .reply-editor:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
 .reply-editor a { color: var(--accent); }
+/* A signature shows on white in the email being written, as it will arrive: its colors are made for white, so in
+   the dark look its black writing was almost invisible (Paul, 2026-11-19). Only the look here; nothing is sent. */
+.reply-editor [data-signature] { background: #fff; color: #1f1f1f; padding: 4px 14px 10px; border-radius: 8px; margin-top: 8px; width: fit-content; max-width: 100%; box-sizing: border-box; }
+.reply-editor [data-signature] a { color: #1a73e8; }
 .reply-files { display: flex; flex-wrap: wrap; gap: .4rem; }
 .reply-files:empty { display: none; }
 .reply-files .chip { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .3rem .2rem .6rem; border: 1px solid var(--border); border-radius: 14px; font-size: .85rem; }
