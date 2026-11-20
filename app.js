@@ -6205,7 +6205,7 @@ async function applySettings({ inboxName, cols, clientId }) {
 // by name; renames follow. A project made in StediTask that Paul said yes to comes back here as "pending"
 // and becomes a column. Off by default so other people's StediMail never knocks on their own computer.
 const STEDITASK_URL = 'http://127.0.0.1:8093/api/mail/sync';
-const STEDITASK_MS = 30 * 1000;
+const STEDITASK_MS = 10 * 1000;   // 10 s so a change asked for by voice shows quickly (2026-11-20)
 
 let stediTaskBusy = null;   // one sync at a time; a change made during one is sent straight after it
 function linkStediTask() {
@@ -6217,14 +6217,17 @@ function linkStediTask() {
 async function syncStediTask() {
   if (!store.get('stediTaskLink', false) || !store.account || !state.token || !settings.columnsSaved) return;
   const renames = store.get('stediTaskRenames', []);
+  const done = store.get('stediTaskOpsDone', []);
   try {
     const res = await fetch(STEDITASK_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: store.account, columns: settings.columns, renames }),
+      body: JSON.stringify({ account: store.account, columns: settings.columns, renames, done, tasks: taskSnapshot() }),
     });
     const r = await res.json();
     if (!r.ok) throw new Error(r.message || res.status);
     store.set('stediTaskRenames', store.get('stediTaskRenames', []).slice(renames.length));
+    store.set('stediTaskOpsDone', store.get('stediTaskOpsDone', []).filter((d) => !done.some((x) => x.id === d.id)));
+    if (r.ops?.length) await applyTaskOps(r.ops);
     const have = [settings.inboxName, ...settings.columns].map((n) => n.toLowerCase());
     for (const name of r.pending || []) {
       if (have.includes(name.toLowerCase())) continue;
@@ -6233,6 +6236,102 @@ async function syncStediTask() {
     }
     if (r.created?.length) toast(`New in StediTask: ${r.created.join(', ')}`);
   } catch {}   // the StediTask window isn't running here: try again next time
+}
+
+// The tasks as they are shown here, for the StediTask window's helper on this computer (Paul's assistant reads
+// them so it sees what Paul sees). fresh = read from Google this session, not just the browser's copy.
+function taskSnapshot() {
+  const d = tasksData();
+  const cols = (name) => d.projects.find((p) => p.name === name)?.columns || TASK_START_COLS;
+  return {
+    fresh: tasks.synced,
+    projects: taskProjects().map((p) => ({ name: p.name, mail: !!p.mail, columns: cols(p.name) })),
+    items: d.items.map(({ id, title, notes, due, dueTime, project, col }) => ({ id, title, notes, due, dueTime, project, col })),
+  };
+}
+
+// Changes queued on this computer by Paul's assistant (Paul, 2026-11-20), done here like any task change so
+// they show at once and can be undone: add_project, add_task, finish_task, move_task, edit_task. Each one's
+// outcome goes back with the next sync, which is sent straight away.
+async function applyTaskOps(ops) {
+  if (!tasks.synced) {
+    if (!tasksTokenReady()) return;   // not signed in to the tasks file yet: they wait for StediTask to open
+    await pullTasks();
+    if (!tasks.synced) return;
+  }
+  const out = [], seen = store.get('stediTaskOpsSeen', []);
+  for (const op of ops) {
+    if (seen.includes(op.id)) continue;   // done already; its outcome is still on its way back
+    seen.push(op.id);
+    try { out.push({ id: op.id, ok: true, said: applyTaskOp(op) }); }
+    catch (e) { out.push({ id: op.id, ok: false, said: e.message }); }
+  }
+  store.set('stediTaskOpsSeen', seen.slice(-200));
+  if (!out.length) return;
+  store.set('stediTaskOpsDone', [...store.get('stediTaskOpsDone', []), ...out]);
+  if (tasks.open) renderTasks(); else render();
+  linkStediTask();
+}
+
+function applyTaskOp(op) {
+  const d = tasksData();
+  const named = (name) => {
+    const want = String(name || '').trim().toLowerCase();
+    if (!want || want === GENERAL.toLowerCase()) return GENERAL;
+    const p = taskProjects().find((x) => x.name.toLowerCase() === want);
+    if (!p) throw new Error(`There is no project called “${name}”.`);
+    return p.name;
+  };
+  const task = () => {
+    const t = findTask(op.task);
+    if (!t) throw new Error('That task is gone.');
+    return t;
+  };
+  const column = (project, col) => {
+    const cols = taskProject(project).columns;
+    if (!col) return cols[0];
+    const c = cols.find((x) => x.toLowerCase() === String(col).trim().toLowerCase());
+    if (!c) throw new Error(`“${project}” has no “${col}” column. Its columns: ${cols.join(', ')}.`);
+    return c;
+  };
+  if (op.op === 'add_project') {
+    const name = String(op.name || '').trim().replace(/\s+/g, ' ');
+    if (!name) throw new Error('No project name.');
+    if (name.toLowerCase() === GENERAL.toLowerCase() || taskProjects().some((p) => p.name.toLowerCase() === name.toLowerCase()))
+      throw new Error(`There is already a project called “${name}”.`);
+    taskProject(name).own = true;
+    saveTasks(`Added the “${name}” project`);
+    return `Added the “${name}” project.`;
+  }
+  if (op.op === 'add_task') {
+    const project = named(op.project);
+    const title = String(op.title || '').trim();
+    if (!title) throw new Error('No task name.');
+    insertTaskByDate({ id: crypto.randomUUID(), title, notes: op.notes || '', due: op.due || '', project,
+      col: column(project, op.col), added: Date.now() });
+    saveTasks(`Added “${title}”`);
+    return `Added “${title}” to ${project}.`;
+  }
+  if (op.op === 'finish_task') {
+    const t = task();
+    const cols = taskProject(t.project).columns;
+    t.col = cols[cols.length - 1];
+    saveTasks(`Finished: ${t.title}`);
+    return `Finished “${t.title}”.`;
+  }
+  if (op.op === 'move_task') {
+    const t = task();
+    t.col = column(t.project, op.col);
+    saveTasks(`Moved “${t.title}”`);
+    return `Moved “${t.title}” to ${t.col}.`;
+  }
+  if (op.op === 'edit_task') {
+    const t = task();
+    for (const k of ['title', 'notes', 'due']) if (typeof op[k] === 'string') t[k] = op[k].trim();
+    saveTasks(`Edited “${t.title}”`);
+    return `Changed “${t.title}”.`;
+  }
+  throw new Error(`Unknown change: ${op.op}`);
 }
 
 function disarmDelete() {
