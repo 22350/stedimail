@@ -337,6 +337,7 @@ function showLabelPicker(labels) {
     dlg.close(); dlg.remove();
     for (const name of chosen) settings.columnLabels[name] = name;
     saveColumnList([...settings.columns, ...chosen]);
+    askColumnTaskProject(chosen);
   });
   skip.addEventListener('click', () => { dlg.close(); dlg.remove(); });
   document.body.append(dlg);
@@ -2962,15 +2963,39 @@ async function removeColumn(i, afterDelete = false, { askTasks = true } = {}) {
   toast(said(`Removed “${name}”. Its emails keep the label in Gmail.`), { label: 'Undo', run: undo, redo });
 }
 
-function addColumn(name) {
+async function addColumn(name, ask = false) {
   const existing = [settings.inboxName, ...settings.columns].map((n) => n.toLowerCase());
   if (existing.includes(name.toLowerCase())) { toast('There is already a column with that name.'); return; }
   if (existing.length >= 9) { toast('Nine columns at most.'); return; }
   const own = (state.allUserLabels || []).find((l) => l.name.toLowerCase() === name.toLowerCase());
   if (own) settings.columnLabels[own.name] = own.name;
   const list = [...settings.columns];
-  list.push(own ? own.name : name);
+  const col = own ? own.name : name;
+  list.push(col);
   saveColumnList(list);
+  if (ask) await askColumnTaskProject([col]);
+}
+
+// A new column can be mail-only (Paul, 2026-11-20): unticked, it goes in StediTask's "hidden" list, the same as
+// a column whose project was closed there. Ticked, it gets its project (and a hidden one comes back).
+function columnTaskProject(name, on) {
+  const d = tasksData();
+  const hidden = (d.hidden || []).includes(name);
+  if (on === hidden) {
+    d.hidden = on ? d.hidden.filter((x) => x !== name) : [...(d.hidden || []), name];
+    saveTasks(null);
+  }
+}
+
+// Every new mail column asks whether it should also be a StediTask project (Paul, 2026-11-20). No = StediMail only.
+async function askColumnTaskProject(names) {
+  if (!names.length) return;
+  for (const n of names) columnTaskProject(n, false);   // kept out while the question is open (Google Tasks sync too)
+  const one = names.length === 1;
+  const yes = await askConfirm(one ? `Also add “${names[0]}” to StediTask as a project?` : `Also add these columns to StediTask as projects?\n\n${names.join(', ')}`,
+    'Yes, add to StediTask', { cancelLabel: 'No, StediMail only', danger: false });
+  for (const n of names) columnTaskProject(n, yes);
+  if (tasks.open) renderTasks();
 }
 
 function renderAddColumn() {
@@ -2995,7 +3020,7 @@ function renderAddColumn() {
       const typed = input.value.trim();
       const own = (state.allUserLabels || []).some((l) => l.name.toLowerCase() === typed.toLowerCase());
       const name = own ? typed : typed.replace(/\//g, '-');
-      if (save && name) addColumn(name); else render();
+      if (save && name) addColumn(name, true); else render();
     };
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); finish(true); }
@@ -6198,6 +6223,7 @@ async function applySettings({ inboxName, cols, clientId }) {
   loadBoard();
   linkStediTask();
   for (const name of gone) await askRemoveTaskProject(name);
+  await askColumnTaskProject(cols.filter((c) => !c.orig).map((c) => c.name));
 }
 
 // ---------- the StediTask window on this computer (Paul, 2026-11-08) ----------
