@@ -3361,7 +3361,9 @@ function renderCard(t, colIdx) {
   }, [
     el('div', { class: 'top' }, [
       checkbox('Select', state.selected.has(t.id), () => toggleSelect(t.id)),
-      el('span', { class: 'people' }, t.people),
+      // A starred email: a yellow star just right of the sender (Paul, 2026-11-19).
+      el('span', { class: 'people-wrap' }, [el('span', { class: 'people' }, t.people),
+        t.labels?.has('STARRED') ? el('span', { class: 'card-star', title: 'Starred', role: 'img', 'aria-label': 'Starred' }, icon('starOn')) : null]),
       t.count > 1 ? el('span', { class: 'num' }, String(t.count)) : null,
       where,
       // The date a card sorts by, so the column reads in order; a returned email says when it was sent on hover.

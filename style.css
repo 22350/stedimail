@@ -1353,3 +1353,8 @@ dialog.sig-designer .sig-textbar > .sig-align::before { content: ''; position: a
 .reply-ccbcc:hover { color: var(--text); background: transparent; }
 .reply-ccbcc[hidden] { display: none; }
 .unsub-done { margin-left: 10px; color: var(--muted); opacity: .6; font-size: 1.1rem; font-weight: 400; }   /* very light (Paul, 2026-11-19) */
+/* A starred email's yellow star, just right of the sender (Paul, 2026-11-19) */
+.card .people-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
+.card .people-wrap .people { flex: 0 1 auto; }
+.card-star { flex: none; display: inline-flex; }
+.card-star svg { width: 16px; height: 16px; fill: #f4b400; }
